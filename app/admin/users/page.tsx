@@ -10,6 +10,7 @@ import RolesSection, { type DashboardRoleOption } from '@/components/RolesSectio
 import RoleBadge from '@/components/roles/RoleBadge';
 import { parseRoleBadgeColor } from '@/lib/roleBadgeColor';
 import { usePermissions } from '@/lib/hooks/usePermissions';
+import { permissionLoadingFallback } from '@/lib/clientPermissionChecks';
 import { softwareConfig } from '@/lib/softwareConfig';
 import { formatDateInAppTimeZone } from '@/lib/timezone';
 import {
@@ -77,17 +78,21 @@ function AdminUsersPageContent() {
     router.replace(nextUrl, { scroll: false });
   };
 
-  // Check if user is admin
-  const isAdmin = (session?.user as any)?.role === 'ADMIN';
-  const canViewUsers = isPermissionsLoading ? isAdmin : hasPermission('users.view');
-  const canAddUsers = isPermissionsLoading ? isAdmin : hasPermission('users.add');
-  const canChangeRoles = isPermissionsLoading ? isAdmin : hasPermission('users.change_role');
-  const canResetPasswords = isPermissionsLoading ? isAdmin : hasPermission('users.reset_password');
-  const canTerminateUsers = isPermissionsLoading ? isAdmin : hasPermission('users.terminate');
+  const userRole = (session?.user as any)?.role;
+  const loadingFallback = permissionLoadingFallback({
+    role: userRole,
+    isSuperAdmin: actorIsSuperAdmin,
+    isDeveloper: actorIsDeveloper,
+  });
+  const canViewUsers = isPermissionsLoading ? loadingFallback : hasPermission('users.view');
+  const canAddUsers = isPermissionsLoading ? loadingFallback : hasPermission('users.add');
+  const canChangeRoles = isPermissionsLoading ? loadingFallback : hasPermission('users.change_role');
+  const canResetPasswords = isPermissionsLoading ? loadingFallback : hasPermission('users.reset_password');
+  const canTerminateUsers = isPermissionsLoading ? loadingFallback : hasPermission('users.terminate');
   const currentUserId = (session?.user as any)?.id;
   const systemRoleActor = { isSuperAdmin: actorIsSuperAdmin, isDeveloper: actorIsDeveloper };
-  const canManagePasswordResets = isPermissionsLoading ? isAdmin : hasPermission('users.password_resets.manage');
-  const canEditPermissions = isPermissionsLoading ? isAdmin : hasPermission('users.permissions.edit');
+  const canManagePasswordResets = isPermissionsLoading ? loadingFallback : hasPermission('users.password_resets.manage');
+  const canEditPermissions = isPermissionsLoading ? loadingFallback : hasPermission('users.permissions.edit');
   const rolePermissionManagementEnabled = softwareConfig.rolePermissionManagementEnabled;
   const canManageRolePermissions = rolePermissionManagementEnabled && canEditPermissions;
 

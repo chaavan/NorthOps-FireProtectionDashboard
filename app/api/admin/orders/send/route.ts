@@ -52,6 +52,7 @@ type SupplierResult = {
   sendStatus: 'SENT' | 'FAILED';
   sendError: string | null;
   fallbackToPurchasing: boolean;
+  emailDispatched: boolean;
 };
 
 type JobLabelContext = {
@@ -412,9 +413,12 @@ export async function POST(request: NextRequest) {
           sendStatus,
           sendError,
           fallbackToPurchasing,
+          emailDispatched: false,
         });
         continue;
       }
+
+      const emailDispatched = webhookResult.mode === 'email_sent';
 
       const savedOrder = await prisma.purchaseOrder.create({
         data: {
@@ -475,6 +479,7 @@ export async function POST(request: NextRequest) {
         sendStatus,
         sendError,
         fallbackToPurchasing,
+        emailDispatched,
       });
     }
 
@@ -578,9 +583,12 @@ export async function POST(request: NextRequest) {
           sendStatus,
           sendError,
           fallbackToPurchasing,
+          emailDispatched: false,
         });
         continue;
       }
+
+      const emailDispatched = webhookResult.mode === 'email_sent';
 
       const savedOrder = await prisma.purchaseOrder.create({
         data: {
@@ -609,14 +617,17 @@ export async function POST(request: NextRequest) {
         sendStatus,
         sendError,
         fallbackToPurchasing,
+        emailDispatched,
       });
     }
 
     const hasFailure = supplierResults.some((result) => result.sendStatus === 'FAILED');
+    const emailDispatched = supplierResults.some((result) => result.emailDispatched);
 
     return NextResponse.json({
       success: !hasFailure,
       partialSuccess: hasFailure,
+      emailDispatched,
       batchId,
       itemCount: sanitizedItems.length,
       supplierResults,

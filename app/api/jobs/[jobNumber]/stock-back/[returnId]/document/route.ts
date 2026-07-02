@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions, isAdmin } from '@/lib/auth';
-import { hasPermission } from '@/lib/permissions';
+import { hasPermission, getEffectivePermissionsForSession } from '@/lib/permissions';
+import { bypassesJobAccessList } from '@/lib/jobScopedAccess';
 import { canAccessJob, jobHasAccessRecords } from '@/lib/jobAccess';
 import { JOB_STOCK_RETURN_STATUS } from '@/lib/jobStockReturnStatus';
 import { buildStockBackPdfDocument } from '@/lib/stockBackCost';
@@ -32,13 +33,14 @@ export async function GET(
       typeof (session.user as { email?: string }).email === 'string'
         ? (session.user as { email: string }).email
         : '';
-    const isUserAdmin = isAdmin(role);
+    const permissionDetails = await getEffectivePermissionsForSession(session);
+    const bypassJobAccess = bypassesJobAccessList(role, permissionDetails);
 
     if (!(await hasPermission(session, 'job.stock_back.view', { jobNumber: normalizedJobNumber }))) {
       return NextResponse.json({ error: 'Forbidden - Job access required' }, { status: 403 });
     }
 
-    if (!isUserAdmin) {
+    if (!bypassJobAccess) {
       const hasRecords = await jobHasAccessRecords(normalizedJobNumber);
       if (hasRecords) {
         const hasAccess = email.length > 0 ? await canAccessJob(email, normalizedJobNumber) : false;

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions, isAdmin } from '@/lib/auth';
-import { hasPermission } from '@/lib/permissions';
+import { hasPermission, getEffectivePermissionsForSession } from '@/lib/permissions';
+import { bypassesJobAccessList } from '@/lib/jobScopedAccess';
 import { updateDeliveryRecord } from '@/lib/deliveryDatabase';
 import { cache, cacheKeys } from '@/lib/cache';
 import { canAccessJob, jobHasAccessRecords } from '@/lib/jobAccess';
@@ -29,7 +30,8 @@ export async function POST(request: NextRequest) {
 
     const role = (session.user as any).role;
     const userEmail = (session.user as any).email;
-    const isUserAdmin = isAdmin(role);
+    const permissionDetails = await getEffectivePermissionsForSession(session);
+    const bypassJobAccess = bypassesJobAccessList(role, permissionDetails);
 
     const body = await request.json();
 
@@ -64,7 +66,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check job access (gatekeeping only).
-    if (!isUserAdmin) {
+    if (!bypassJobAccess) {
       // Scoped to the list being acted on - a job can have access records
       // on one list but not another.
       const hasRecords = await jobHasAccessRecords(body.jobNumber, listNumberContext);

@@ -5,9 +5,14 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Archive, Building2, Check, Eraser, Send, Trash2, Truck, Undo2, Warehouse, type LucideIcon } from 'lucide-react';
 import DashboardSidebar from '@/components/DashboardSidebar';
+import DashboardBootstrapShell, {
+  useAppBootstrap,
+  DashboardContentSkeleton,
+} from '@/components/DashboardBootstrapShell';
 import AccessDeniedOverlay from '@/components/AccessDeniedOverlay';
 import VendorsHubModal from '@/components/vendors/VendorsHubModal';
 import { usePermissions } from '@/lib/hooks/usePermissions';
+import { permissionLoadingFallback } from '@/lib/clientPermissionChecks';
 import { displaySupplierName, normalizeSupplierKey } from '@/lib/suppliers';
 import type { UnifiedVendor } from '@/lib/vendorService';
 import { formatDateInAppTimeZone } from '@/lib/timezone';
@@ -120,6 +125,7 @@ interface SendResult {
   sendStatus: 'SENT' | 'FAILED';
   sendError: string | null;
   fallbackToPurchasing: boolean;
+  emailDispatched?: boolean;
 }
 
 type TabType = 'pending-to-order' | 'pending-to-receive' | 'order-history';
@@ -381,14 +387,16 @@ type ReceiveCancelTarget = {
 export default function AdminOrdersPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
-  const { hasPermission, isLoading: permissionsLoading } = usePermissions();
+  const { hasPermission, isLoading: permissionsLoading, isSuperAdmin, isDeveloper } = usePermissions();
+  const { isBootstrapping } = useAppBootstrap();
   
   // Tab state
   const [activeTab, setActiveTab] = useState<TabType>('pending-to-order');
   
   // State for pending to order tab
   const [pendingToOrderJobs, setPendingToOrderJobs] = useState<PendingJob[]>([]);
-  const [isLoadingPendingToOrder, setIsLoadingPendingToOrder] = useState(false);
+  const [isLoadingPendingToOrder, setIsLoadingPendingToOrder] = useState(true);
+  const [isLoadingPendingToReceive, setIsLoadingPendingToReceive] = useState(true);
   const [itemSuppliers, setItemSuppliers] = useState<Map<string, string>>(new Map());
   const [allVendors, setAllVendors] = useState<string[]>([]);
   const [isLoadingVendors, setIsLoadingVendors] = useState(false);
@@ -397,10 +405,9 @@ export default function AdminOrdersPage() {
   
   // State for pending to receive tab
   const [pendingToReceiveJobs, setPendingToReceiveJobs] = useState<PendingToReceiveJob[]>([]);
-  const [isLoadingPendingToReceive, setIsLoadingPendingToReceive] = useState(false);
   // State for order history tab
   const [pastOrders, setPastOrders] = useState<HistoryOrder[]>([]);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [pendingToOrderSearch, setPendingToOrderSearch] = useState('');
   const [pendingToReceiveSearch, setPendingToReceiveSearch] = useState('');
@@ -440,6 +447,7 @@ export default function AdminOrdersPage() {
   const [cancelReceiveTargets, setCancelReceiveTargets] = useState<ReceiveCancelTarget[]>([]);
   const [sendResults, setSendResults] = useState<SendResult[]>([]);
   const [lastBatchId, setLastBatchId] = useState<string | null>(null);
+  const [purchaseOrderEmailEnabled, setPurchaseOrderEmailEnabled] = useState(false);
 
   // Vendor hub state
   const [unifiedVendors, setUnifiedVendors] = useState<UnifiedVendor[]>([]);
@@ -453,46 +461,50 @@ export default function AdminOrdersPage() {
   const [isLoadingDeleteOrderSummary, setIsLoadingDeleteOrderSummary] = useState(false);
 
   // Check if user is admin
-  const roleIsAdmin = (session?.user as any)?.role === 'ADMIN';
-  const isAdmin = permissionsLoading ? roleIsAdmin : hasPermission('orders.view');
+  const loadingFallback = permissionLoadingFallback({
+    role: (session?.user as any)?.role,
+    isSuperAdmin,
+    isDeveloper,
+  });
+  const isAdmin = permissionsLoading ? loadingFallback : hasPermission('orders.view');
   const canViewToOrderTab = permissionsLoading
-    ? roleIsAdmin
+    ? loadingFallback
     : hasPermission('orders.to_order.view');
   const canEditToOrderRows = permissionsLoading
-    ? roleIsAdmin
+    ? loadingFallback
     : hasPermission('orders.to_order.edit');
   const canReviewAndSendOrders = permissionsLoading
-    ? roleIsAdmin
+    ? loadingFallback
     : hasPermission('orders.generate_send');
   const canViewPendingOrderUpdates = permissionsLoading
-    ? roleIsAdmin
+    ? loadingFallback
     : hasPermission('orders.pending.view');
   const canViewOrderHistory = permissionsLoading
-    ? roleIsAdmin
+    ? loadingFallback
     : hasPermission('orders.history.view');
   const canDeleteOrderHistory = permissionsLoading
-    ? roleIsAdmin
+    ? loadingFallback
     : hasPermission('orders.history.delete');
   const canCancelPendingOrders = permissionsLoading
-    ? roleIsAdmin
+    ? loadingFallback
     : hasPermission('orders.cancel');
   const canMarkReceived = permissionsLoading
-    ? roleIsAdmin
+    ? loadingFallback
     : hasPermission('orders.mark_received');
   const canRevertReceived = permissionsLoading
-    ? roleIsAdmin
+    ? loadingFallback
     : hasPermission('orders.revert_received');
   const canMarkPickup = permissionsLoading
-    ? roleIsAdmin
+    ? loadingFallback
     : hasPermission('orders.mark_pickup');
   const canMarkJobsiteDelivery = permissionsLoading
-    ? roleIsAdmin
+    ? loadingFallback
     : hasPermission('orders.mark_jobsite_delivery');
   const canClearDeliveryStatus = permissionsLoading
-    ? roleIsAdmin
+    ? loadingFallback
     : hasPermission('orders.clear_delivery_status');
   const canManageSuppliers = permissionsLoading
-    ? roleIsAdmin
+    ? loadingFallback
     : hasPermission('orders.suppliers.manage');
 
   const sanitizeEmailListForDisplay = (emails: string[] | null | undefined) => {
@@ -678,6 +690,20 @@ export default function AdminOrdersPage() {
     if (!canReviewAndSendOrders && !canManageSuppliers) return;
     void loadUnifiedVendors();
   }, [session, status, permissionsLoading, canReviewAndSendOrders, canManageSuppliers]);
+
+  useEffect(() => {
+    if (status === 'loading' || !session) return;
+    void (async () => {
+      try {
+        const response = await fetch('/api/admin/orders/config', { cache: 'no-store' });
+        if (!response.ok) return;
+        const data = await response.json();
+        setPurchaseOrderEmailEnabled(data.emailEnabled === true);
+      } catch {
+        setPurchaseOrderEmailEnabled(false);
+      }
+    })();
+  }, [session, status]);
 
   useEffect(() => {
     if (status === 'loading' || permissionsLoading || !session || !isAdmin) return;
@@ -1473,6 +1499,7 @@ export default function AdminOrdersPage() {
 
       const data = await response.json();
       const results = (data.supplierResults || []) as SendResult[];
+      const emailDispatched = data.emailDispatched === true;
       setSendResults(results);
       setLastBatchId(data.batchId || null);
 
@@ -1480,11 +1507,23 @@ export default function AdminOrdersPage() {
       const totalCount = results.length;
       const sentCount = totalCount - failedCount;
       if (failedCount === 0) {
-        setSuccessMessage(`Order sent successfully! Purchase requests were emailed to all ${totalCount} supplier${totalCount === 1 ? '' : 's'}.`);
+        setSuccessMessage(
+          emailDispatched
+            ? `Order sent successfully! Purchase requests were emailed to all ${totalCount} supplier${totalCount === 1 ? '' : 's'}.`
+            : `Orders placed successfully! ${totalCount} purchase order${totalCount === 1 ? '' : 's'} recorded and moved to On Order.`,
+        );
       } else if (sentCount > 0) {
-        setSuccessMessage(`Order partially completed. ${sentCount} of ${totalCount} supplier${totalCount === 1 ? '' : 's'} received the purchase request. Some could not be delivered—please contact your administrator for assistance.`);
+        setSuccessMessage(
+          emailDispatched
+            ? `Order partially completed. ${sentCount} of ${totalCount} supplier${totalCount === 1 ? '' : 's'} received the purchase request. Some could not be delivered—please contact your administrator for assistance.`
+            : `Orders partially placed. ${sentCount} of ${totalCount} purchase order${totalCount === 1 ? '' : 's'} were recorded. See details below.`,
+        );
       } else {
-        setSuccessMessage(`Order could not be sent. The purchase order email webhook did not run successfully. See details below.`);
+        setSuccessMessage(
+          emailDispatched
+            ? `Order could not be sent. The purchase order email webhook did not run successfully. See details below.`
+            : `Orders could not be placed. See details below.`,
+        );
       }
 
       setSelectedItemsToOrder(new Set());
@@ -2206,18 +2245,39 @@ export default function AdminOrdersPage() {
   }, [selectedOrderItemsForReview, vendorDirectoryMap]);
   const reviewGroupsNeedingSetup = reviewGroups.filter((group) => group.needsSetup).length;
 
-  const isLoading = status === 'loading' ||
-    permissionsLoading ||
+  const isDataLoading =
     (activeTab === 'pending-to-order' && isLoadingPendingToOrder) ||
     (activeTab === 'pending-to-receive' && isLoadingPendingToReceive) ||
     (activeTab === 'order-history' && isLoadingHistory);
 
-  if (status === 'loading' || permissionsLoading || isLoading) {
+  const isInitialDataLoading =
+    (activeTab === 'pending-to-order' &&
+      isLoadingPendingToOrder &&
+      pendingToOrderJobs.length === 0) ||
+    (activeTab === 'pending-to-receive' &&
+      isLoadingPendingToReceive &&
+      pendingToReceiveJobs.length === 0) ||
+    (activeTab === 'order-history' && isLoadingHistory && pastOrders.length === 0);
+
+  if (isBootstrapping) {
     return (
-      <div className="min-h-screen bg-slate-100 dark:bg-slate-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-slate-600 dark:text-slate-400 font-medium">Loading orders...</p>
+      <DashboardBootstrapShell message="Loading orders...">
+        <DashboardContentSkeleton />
+      </DashboardBootstrapShell>
+    );
+  }
+
+  if (isInitialDataLoading) {
+    return (
+      <div className="h-screen bg-slate-100 dark:bg-slate-900 flex">
+        <DashboardSidebar />
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <header className="sticky top-0 z-10 bg-white dark:bg-slate-800/95 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700/50">
+            <div className="px-6 py-4">
+              <div className="h-10 w-56 animate-pulse rounded-lg bg-slate-200 dark:bg-slate-700/50" />
+            </div>
+          </header>
+          <DashboardContentSkeleton />
         </div>
       </div>
     );
@@ -2257,6 +2317,11 @@ export default function AdminOrdersPage() {
                 </h1>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 font-medium">
                   Send purchase orders, track deliveries, and review past orders
+                  {!purchaseOrderEmailEnabled ? (
+                    <span className="block text-sm font-normal text-slate-500 dark:text-slate-400 mt-1">
+                      Supplier emails are off — orders are recorded in the dashboard only.
+                    </span>
+                  ) : null}
                 </p>
               </div>
               
@@ -2271,7 +2336,7 @@ export default function AdminOrdersPage() {
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                     </svg>
-                    Review & Send
+                    Review & {purchaseOrderEmailEnabled ? 'Send' : 'Place Order'}
                   </button>
                 </div>
               )}
@@ -2463,19 +2528,19 @@ export default function AdminOrdersPage() {
                   loadAllTabCounts();
                   loadData();
                 }}
-                disabled={isLoading}
+                disabled={isDataLoading}
                 className="ml-auto px-4 py-2.5 bg-slate-200 dark:bg-slate-700/50 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600/80 hover:bg-slate-300 dark:hover:bg-slate-700/70 rounded-xl text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 title="Refresh data"
               >
                 <svg
-                  className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`}
+                  className={`w-5 h-5 ${isDataLoading ? 'animate-spin' : ''}`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                {isLoading ? 'Refreshing...' : 'Refresh'}
+                {isDataLoading ? 'Refreshing...' : 'Refresh'}
               </button>
               {canManageSuppliers ? (
                 <button
@@ -2516,9 +2581,10 @@ export default function AdminOrdersPage() {
                 <div className="mt-3 space-y-1 text-sm text-white/90">
                   {sendResults.map((result) => (
                     <p key={`${result.orderNumber}-${result.supplier}`}>
-                      {formatVendorDisplay(result.supplier)}: {result.sendStatus === 'SENT' ? 'Sent' : 'Could not send'}
+                      {formatVendorDisplay(result.supplier)}:                       {result.sendStatus === 'SENT' ? (result.emailDispatched === false ? 'Placed' : 'Sent') : 'Could not place'}
                       {result.sendStatus === 'SENT' && getDisplayPoLabel(result) ? ` (${getDisplayPoLabel(result)})` : ''}
-                      {result.sendStatus === 'SENT' && result.fallbackToPurchasing ? ' — emailed to purchasing (vendor PO email not configured)' : ''}
+                      {result.sendStatus === 'SENT' && result.emailDispatched && result.fallbackToPurchasing ? ' — emailed to purchasing (vendor PO email not configured)' : ''}
+                      {result.sendStatus === 'SENT' && result.emailDispatched === false ? ' — recorded in dashboard (no supplier email)' : ''}
                       {result.sendStatus === 'FAILED' && result.fallbackToPurchasing ? ' — would have gone to purchasing' : ''}
                       {result.sendError ? ` — ${result.sendError}` : ''}
                     </p>
@@ -3566,7 +3632,9 @@ export default function AdminOrdersPage() {
           >
             <div className="px-6 py-4 border-b border-gray-200 dark:border-slate-700/50 flex items-center justify-between">
               <div>
-                <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Review Supplier Orders</h2>
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
+                  {purchaseOrderEmailEnabled ? 'Review Supplier Orders' : 'Review Purchase Orders'}
+                </h2>
                 <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
                   {selectedOrderItemsForReview.length} selected item(s) across {reviewGroups.length} supplier group(s)
                 </p>
@@ -3581,11 +3649,15 @@ export default function AdminOrdersPage() {
               </button>
             </div>
             <div className="p-6 overflow-y-auto max-h-[65vh] space-y-4">
-              {reviewGroupsNeedingSetup > 0 ? (
+              {purchaseOrderEmailEnabled && reviewGroupsNeedingSetup > 0 ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
                   {reviewGroupsNeedingSetup} supplier group
                   {reviewGroupsNeedingSetup === 1 ? '' : 's'} still need PO email setup. Orders will
                   fall back to purchasing until vendor emails are configured in Vendors.
+                </div>
+              ) : !purchaseOrderEmailEnabled ? (
+                <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 dark:border-sky-900/40 dark:bg-sky-950/30 dark:text-sky-200">
+                  Supplier emails are disabled. Confirming will create purchase orders in the dashboard and move lines to On Order.
                 </div>
               ) : null}
               {reviewGroups.map((group) => (
@@ -3593,9 +3665,15 @@ export default function AdminOrdersPage() {
                   <div className="px-4 py-3 bg-gray-50 dark:bg-slate-700/30 flex items-start justify-between gap-4">
                     <div>
                       <h3 className="font-bold text-slate-900 dark:text-white">{group.supplierName}</h3>
-                      <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                        To: {group.toEmails.join(', ')} | CC: {group.ccEmails.join(', ')}
-                      </p>
+                      {purchaseOrderEmailEnabled ? (
+                        <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                          To: {group.toEmails.join(', ')} | CC: {group.ccEmails.join(', ')}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                          {group.items.length} line{group.items.length === 1 ? '' : 's'} — dashboard only
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       {group.fallbackToPurchasing && (
@@ -3655,8 +3733,10 @@ export default function AdminOrdersPage() {
                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                     Sending...
                   </>
-                ) : (
+                ) : purchaseOrderEmailEnabled ? (
                   <>Send Supplier Emails</>
+                ) : (
+                  <>Place Orders</>
                 )}
               </button>
             </div>

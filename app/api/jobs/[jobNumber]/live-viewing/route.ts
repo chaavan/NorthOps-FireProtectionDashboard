@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions, isAdmin } from "@/lib/auth";
+import { authOptions } from "@/lib/auth";
 import { canAccessJob, jobHasAccessRecords } from "@/lib/jobAccess";
+import { getEffectivePermissionsForSession } from "@/lib/permissions";
+import { bypassesJobAccessList } from "@/lib/jobScopedAccess";
 import {
   getLiveViewersForJobList,
   pruneExpiredLiveViewSessions,
@@ -16,9 +18,11 @@ async function canReadJobContextForList(
   user: any,
   jobNumber: string,
   listNumberContext: string | null | undefined,
+  session: { user?: { role?: string | null; email?: string | null } } | null,
 ): Promise<boolean> {
   if (!user) return false;
-  if (isAdmin(user.role)) return true;
+  const permissionDetails = await getEffectivePermissionsForSession(session);
+  if (bypassesJobAccessList(user.role, permissionDetails)) return true;
 
   const userEmail = String(user.email || "").trim().toLowerCase();
   if (!userEmail) return false;
@@ -73,6 +77,7 @@ export async function GET(
       session.user as any,
       jobNumber.trim(),
       listNumberContext,
+      session,
     );
     if (!hasAccess) {
       return NextResponse.json(
@@ -116,6 +121,7 @@ export async function POST(
       session.user as any,
       jobNumber.trim(),
       typeof body?.listNumber === "string" ? body.listNumber : null,
+      session,
     );
     if (!hasAccess) {
       return NextResponse.json(

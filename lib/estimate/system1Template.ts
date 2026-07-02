@@ -5,6 +5,17 @@ import type {
   EstimateWorkbookSectionRow,
 } from "@/lib/estimateTypes";
 import { defaultEstimateProjectMetadata, percentFromTemplateCell } from "@/lib/estimate/estimateMetadata";
+import {
+  DEMO_ESTIMATE_PRICING_INPUTS,
+  DEMO_ESTIMATE_PROJECT_PRICING,
+  useDemoEstimatePricingDefaults,
+} from "@/lib/estimate/demoPricingDefaults";
+import {
+  getEstimateWorkbookProfile,
+  getWorkbookTemplateDisplayName,
+  rewriteWorkDayFormula,
+  scaleDefaultProductionRate,
+} from "@/lib/estimate/estimateWorkbookProfile";
 import type { JobDetailsResponse } from "@/lib/types";
 import { normalizeListNumber } from "@/lib/jobListContext";
 import system1Sheet from "@/lib/estimate/system1Sheet.json";
@@ -113,10 +124,22 @@ const FIELD_RATE_ROWS = [
   { row: 55, rateCell: "D55" },
 ];
 
-const EDITABLE_FIELD_RATE_INPUTS = Object.fromEntries(
-  FIELD_RATE_ROWS.map(({ rateCell }) => [rateCell, getBaseNumber(rateCell)])
-    .filter((entry): entry is [string, number] => entry[1] !== null),
-);
+function buildEditableFieldRateInputs(): Record<string, number> {
+  const base = Object.fromEntries(
+    FIELD_RATE_ROWS.map(({ rateCell }) => [rateCell, getBaseNumber(rateCell)]).filter(
+      (entry): entry is [string, number] => entry[1] !== null,
+    ),
+  );
+  const profile = getEstimateWorkbookProfile();
+  if (profile.productionRateScale === 1) {
+    return base;
+  }
+  return Object.fromEntries(
+    Object.entries(base).map(([cell, value]) => [cell, scaleDefaultProductionRate(value)]),
+  );
+}
+
+const EDITABLE_FIELD_RATE_INPUTS = buildEditableFieldRateInputs();
 
 const FIELD_MANUAL_INPUTS = {
   B58: 0,
@@ -271,7 +294,11 @@ export function parseCellAddress(address: string): { row: number; column: number
 
 export function getBaseCell(address: string): SheetCellValue {
   const { row, column } = parseCellAddress(address);
-  return SHEET[row - 1]?.[column - 1] ?? null;
+  const value = SHEET[row - 1]?.[column - 1] ?? null;
+  if (typeof value === "string" && value.startsWith("=")) {
+    return rewriteWorkDayFormula(value);
+  }
+  return value;
 }
 
 export function getBaseNumber(address: string): number | null {
@@ -582,11 +609,40 @@ export function buildFieldWorkbookRows(): EstimateWorkbookSectionRow[] {
 }
 
 export function buildShopWorkbookRows(): EstimateWorkbookSectionRow[] {
+  const shopLabels = getEstimateWorkbookProfile().shopRowLabels;
   return [
-    { rowKey: "row-75", label: "TFP Line & Main Fab", quantityCell: "A75", rateCell: "E75", hoursCell: "A75", costCell: "F75" },
-    { rowKey: "row-76", label: "TFP Riser Fab", quantityCell: "A76", rateCell: "E76", hoursCell: "A76", costCell: "F76" },
-    { rowKey: "row-77", label: "TFP Pump Fab", quantityCell: "A77", rateCell: "E77", hoursCell: "A77", costCell: "F77" },
-    { rowKey: "row-78", label: "TFP Fab", quantityCell: "A78", rateCell: "E78", hoursCell: "A78", costCell: "F78" },
+    {
+      rowKey: "row-75",
+      label: shopLabels[75] ?? "Line & Main Fab",
+      quantityCell: "A75",
+      rateCell: "E75",
+      hoursCell: "A75",
+      costCell: "F75",
+    },
+    {
+      rowKey: "row-76",
+      label: shopLabels[76] ?? "Riser Fab",
+      quantityCell: "A76",
+      rateCell: "E76",
+      hoursCell: "A76",
+      costCell: "F76",
+    },
+    {
+      rowKey: "row-77",
+      label: shopLabels[77] ?? "Pump Fab",
+      quantityCell: "A77",
+      rateCell: "E77",
+      hoursCell: "A77",
+      costCell: "F77",
+    },
+    {
+      rowKey: "row-78",
+      label: shopLabels[78] ?? "General Fab",
+      quantityCell: "A78",
+      rateCell: "E78",
+      hoursCell: "A78",
+      costCell: "F78",
+    },
     { rowKey: "row-79", label: "TOTAL SHOP HOURS", quantityCell: null, rateCell: null, hoursCell: "A79", costCell: null },
     { rowKey: "row-80", label: "Trucking Trips", quantityCell: "A80", rateCell: "E80", hoursCell: "A80", costCell: "F80" },
     { rowKey: "row-81", label: "Truck Hotel Per Night", quantityCell: "A81", rateCell: "E81", hoursCell: "A81", costCell: "F81" },
@@ -706,10 +762,14 @@ export function createDefaultEstimateDraft(
       projectLocationLine1: jobDetails.jobMeta?.locationShipTo ?? "",
       projectLocationLine2: jobDetails.jobMeta?.area ?? "",
       bidDueDate: jobDetails.jobMeta?.stocklistDeliveryShipDate ?? "",
-      squareFootage: SUMMARY_INPUTS.A128,
+      squareFootage: useDemoEstimatePricingDefaults()
+        ? DEMO_ESTIMATE_PROJECT_PRICING.squareFootage
+        : SUMMARY_INPUTS.A128,
       ...defaultEstimateProjectMetadata(),
     },
-    inputs: {
+    inputs: useDemoEstimatePricingDefaults()
+      ? { ...DEMO_ESTIMATE_PRICING_INPUTS }
+      : {
       milesToJobSite: SUMMARY_INPUTS.A11 ?? 0,
       salesTaxPercent: percentFromTemplateCell(SUMMARY_INPUTS.E8),
       materialInflationPercent: percentFromTemplateCell(SUMMARY_INPUTS.E9),
@@ -783,5 +843,5 @@ export function getSystem1SheetData(): SheetCellValue[][] {
 }
 
 export function getSystem1TemplateDisplayName(): string {
-  return getBaseString("H2") || "System 1";
+  return getWorkbookTemplateDisplayName(getBaseString("H2") || "System 1");
 }

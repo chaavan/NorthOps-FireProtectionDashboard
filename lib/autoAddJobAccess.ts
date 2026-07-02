@@ -240,7 +240,9 @@ export async function computeJobTypeAccessImpact(params: {
     } else if (!isAdmin(editor.role)) {
       const details = await getDetails(editorEmail);
       editorWouldLoseAccess = details
-        ? !canViewJobTypeFromDetails(details, params.isServiceJob)
+        ? !details.isDeveloper &&
+          !details.isSuperAdmin &&
+          !canViewJobTypeFromDetails(details, params.isServiceJob)
         : true;
     }
   }

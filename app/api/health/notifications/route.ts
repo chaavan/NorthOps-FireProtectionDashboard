@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { authOptions, isAdmin } from '@/lib/auth';
+import { authOptions } from '@/lib/auth';
+import { getEffectivePermissionsForSession } from '@/lib/permissions';
+import { bypassesJobAccessList } from '@/lib/jobScopedAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +14,8 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   const session = await getServerSession(authOptions);
   const role = (session?.user as { role?: string } | undefined)?.role;
-  if (!session?.user || !isAdmin(role)) {
+  const permissionDetails = await getEffectivePermissionsForSession(session);
+  if (!session?.user || !bypassesJobAccessList(role, permissionDetails)) {
     return NextResponse.json(
       { error: 'Unauthorized - Admin only' },
       { status: 401 }

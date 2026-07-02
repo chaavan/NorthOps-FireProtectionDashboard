@@ -8,11 +8,29 @@ export type RemainingQuantityInput = {
   vendor?: number | null;
 };
 
-export function toNonNegativeInt(value: number | null | undefined): number {
+/** PostgreSQL INT4 upper bound — quantities must never exceed this when persisting. */
+export const POSTGRES_INT4_MAX = 2_147_483_647;
+
+/** Practical upper bound for a single job line quantity (guards OCR/barcode misreads). */
+export const MAX_JOB_LINE_QUANTITY = 1_000_000;
+
+export function normalizeJobLineQuantity(value: number | null | undefined): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return 0;
   }
-  return Math.max(0, Math.trunc(value));
+  return Math.max(0, Math.min(Math.trunc(value), POSTGRES_INT4_MAX));
+}
+
+export function isJobLineQuantityValid(value: number | null | undefined): boolean {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return true;
+  }
+  const normalized = Math.trunc(value);
+  return normalized >= 0 && normalized <= MAX_JOB_LINE_QUANTITY;
+}
+
+export function toNonNegativeInt(value: number | null | undefined): number {
+  return normalizeJobLineQuantity(value);
 }
 
 export function clampFab(

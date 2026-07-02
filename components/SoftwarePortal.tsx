@@ -7,6 +7,7 @@ import {
   type SoftwareEntry,
 } from "@/lib/softwareCatalog";
 import { sanitizeCallbackUrl } from "@/lib/softwareConfig";
+import BrandLogo from "@/components/BrandLogo";
 
 const catalog = getSoftwareCatalog();
 
@@ -49,10 +50,10 @@ function SoftwareCard({
 
       <div className="relative mb-5">
         <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 opacity-30 blur-xl transition-opacity group-hover:opacity-50" />
-        <img
+        <BrandLogo
           src={entry.logoUrl}
           alt={entry.name}
-          className="relative h-16 w-16 rounded-2xl shadow-lg ring-4 ring-white/50 dark:ring-slate-700/50 sm:h-20 sm:w-20"
+          className="relative h-12 w-auto max-w-[14rem] sm:h-14"
         />
       </div>
 

@@ -19,14 +19,14 @@ export default function ProtectedAction({
   requireAdmin = false,
   fallback = null,
 }: ProtectedActionProps) {
-  const { canEdit, isAdmin, isLoading } = useAuth();
+  const { canEdit, isAdmin, isPrivileged, isLoading } = useAuth();
 
   if (isLoading) {
     return <>{fallback}</>;
   }
 
   // Check admin permission
-  if (requireAdmin && !isAdmin) {
+  if (requireAdmin && !isPrivileged) {
     return <>{fallback}</>;
   }
 

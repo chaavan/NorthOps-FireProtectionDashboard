@@ -28,6 +28,13 @@ import {
   parseSheetRowFromCatalogKey,
 } from "@/lib/estimate/system1SectionAdjustments";
 import { SYSTEM1_AUTO_QUANTITY_ROWS } from "@/lib/estimate/system1AutoQuantityRows";
+import {
+  calculateProfileAutomaticFees,
+  getEstimateWorkbookProfile,
+  getWorkbookTemplateDisplayName,
+  hoursToWorkDays,
+  productionPeriodToHourlyRate,
+} from "@/lib/estimate/estimateWorkbookProfile";
 
 type PricingLookup = Map<string, { cost: number; supplier: string }>;
 
@@ -123,23 +130,7 @@ function calculateAutomaticFees(params: {
   totalSprinklers: number;
   sprinklerFeeRate?: number | null;
 }) {
-  if (params.feeBase < 1) {
-    return 0;
-  }
-
-  const basePermitFee = 70;
-  const tierFee =
-    params.feeBase < 3000
-      ? 30
-      : params.feeBase < 8000
-        ? 45
-        : params.feeBase < 11000
-          ? 60
-          : 70;
-  const extraFee = Math.ceil(Math.max(params.feeBase - 15000, 0) / 3000) * 17;
-  const sprinklerFee =
-    toNonNegativeNumber(params.totalSprinklers) * toNonNegativeNumber(params.sprinklerFeeRate);
-  return roundMoney(basePermitFee + tierFee + extraFee + sprinklerFee);
+  return calculateProfileAutomaticFees(params);
 }
 
 function toNumber(value: unknown): number {
@@ -454,7 +445,7 @@ function buildLineFromCatalogRow(params: {
     manualQty: toNumber(manualQty),
     autoQty: toNonNegativeNumber(autoQty),
     effectiveQuantity: totalQty,
-    supplier: supplierOverride ?? (catalogRow.section || "System 1"),
+    supplier: supplierOverride ?? (catalogRow.section || getWorkbookTemplateDisplayName()),
     databaseUnitPrice,
     manualUnitPrice,
     baseUnitPrice: resolvedUnitPrice,
@@ -856,6 +847,7 @@ function hydrateWorkbookRows(
   draft: EstimateDraft,
 ): EstimateWorkbookSectionRow[] {
   const readCell = createFormulaReader(createCellModel(draft));
+  const { workDayHours } = getEstimateWorkbookProfile();
   return rows.map((row) => {
     const quantity = row.quantityCell ? toNumber(readCell(row.quantityCell)) : null;
     const rate = row.rateCell ? toNumber(readCell(row.rateCell)) : null;
@@ -869,14 +861,13 @@ function hydrateWorkbookRows(
         unitRate && unitRate > 0
           ? unitRate
           : rate && rate > 0
-            ? rate / 16
+            ? productionPeriodToHourlyRate(rate)
             : 0;
       const calculatedHours =
         quantity && quantity > 0 && feetPerHour > 0
           ? Math.ceil(quantity / feetPerHour)
           : 0;
-      const calculatedDays =
-        calculatedHours > 0 ? Math.ceil(calculatedHours / 16) : 0;
+      const calculatedDays = hoursToWorkDays(calculatedHours);
 
       return {
         ...row,
@@ -896,8 +887,7 @@ function hydrateWorkbookRows(
         quantity && quantity > 0 && minutesPerJoint > 0
           ? Math.ceil((minutesPerJoint * quantity) / 60)
           : 0;
-      const calculatedDays =
-        calculatedHours > 0 ? Math.ceil(calculatedHours / 16) : 0;
+      const calculatedDays = hoursToWorkDays(calculatedHours);
 
       return {
         ...row,
@@ -912,20 +902,20 @@ function hydrateWorkbookRows(
     }
 
     if (FIELD_SPRINKLER_ROWS.has(row.rowKey)) {
-      const sprinklersPer16Hours = rate && rate > 0 ? rate : 0;
-      const calculatedRate = sprinklersPer16Hours > 0 ? 16 / sprinklersPer16Hours : 0;
+      const sprinklersPerPeriod = rate && rate > 0 ? rate : 0;
+      const calculatedRate =
+        sprinklersPerPeriod > 0 ? workDayHours / sprinklersPerPeriod : 0;
       const calculatedMinutes = calculatedRate * 60;
       const calculatedHours =
         quantity && quantity > 0 && calculatedRate > 0
           ? Math.ceil(quantity * calculatedRate)
           : 0;
-      const calculatedDays =
-        calculatedHours > 0 ? Math.ceil(calculatedHours / 16) : 0;
+      const calculatedDays = hoursToWorkDays(calculatedHours);
 
       return {
         ...row,
         quantity,
-        rate: sprinklersPer16Hours,
+        rate: sprinklersPerPeriod,
         unitRate: calculatedRate,
         minutes: calculatedMinutes,
         hours: calculatedHours,
@@ -942,8 +932,7 @@ function hydrateWorkbookRows(
           quantity && quantity > 0 && hoursPerPump > 0
             ? Math.ceil(quantity * hoursPerPump)
             : 0;
-        const calculatedDays =
-          calculatedHours > 0 ? Math.ceil(calculatedHours / 16) : 0;
+        const calculatedDays = hoursToWorkDays(calculatedHours);
 
         return {
           ...row,
@@ -963,8 +952,7 @@ function hydrateWorkbookRows(
         quantity && quantity > 0 && minutesPerUnit > 0
           ? Math.ceil((minutesPerUnit * quantity) / 60)
           : 0;
-      const calculatedDays =
-        calculatedHours > 0 ? Math.ceil(calculatedHours / 16) : 0;
+      const calculatedDays = hoursToWorkDays(calculatedHours);
 
       return {
         ...row,

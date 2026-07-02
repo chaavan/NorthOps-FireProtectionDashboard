@@ -11,6 +11,7 @@ import RoleEditorTabs, { type RoleEditorTab } from "@/components/roles/RoleEdito
 import RolePermissionsEditor from "@/components/roles/RolePermissionsEditor";
 import WarningConfirmModal from "@/components/WarningConfirmModal";
 import { usePermissions } from "@/lib/hooks/usePermissions";
+import { permissionLoadingFallback } from "@/lib/clientPermissionChecks";
 import { useUnsavedChangesGuard } from "@/lib/hooks/useUnsavedChangesGuard";
 import { softwareConfig } from "@/lib/softwareConfig";
 import {
@@ -23,11 +24,16 @@ import { defaultRoleFormValues, ROLES_LIST_HREF, type RoleFormValues } from "@/l
 export default function CreateRolePage() {
   const router = useRouter();
   const { data: session, status } = useSession();
-  const { hasPermission, isLoading: isPermissionsLoading } = usePermissions();
-  const isAdmin = (session?.user as any)?.role === "ADMIN";
+  const { hasPermission, isLoading: isPermissionsLoading, isSuperAdmin, isDeveloper } = usePermissions();
   const canManage =
     softwareConfig.rolePermissionManagementEnabled &&
-    (isPermissionsLoading ? isAdmin : hasPermission("users.permissions.edit"));
+    (isPermissionsLoading
+      ? permissionLoadingFallback({
+          role: (session?.user as any)?.role,
+          isSuperAdmin,
+          isDeveloper,
+        })
+      : hasPermission("users.permissions.edit"));
 
   const [activeTab, setActiveTab] = useState<RoleEditorTab>("overview");
   const [form, setForm] = useState<RoleFormValues>(defaultRoleFormValues());

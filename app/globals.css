@@ -1131,3 +1131,29 @@ select:-webkit-autofill:active {
     animation: none !important;
   }
 }
+
+/* NorthOps brand logo — dark marks on light UI, inverted on dark UI */
+.brand-logo {
+  display: block;
+  height: 2rem;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.brand-logo-on-light {
+  filter: none;
+}
+
+.brand-logo-on-dark {
+  filter: brightness(0) invert(1);
+}
+
+.brand-logo-auto {
+  filter: none;
+}
+
+.dark .brand-logo-auto {
+  filter: brightness(0) invert(1);
+}

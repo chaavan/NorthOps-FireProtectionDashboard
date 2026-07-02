@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions, isAdmin, resolveSessionUserRole } from "@/lib/auth";
+import { authOptions, resolveSessionUserRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { activeUserWhere } from "@/lib/activeUsers";
 import { isPermissionKey, type PermissionKey } from "@/lib/permissionCatalog";
 import {
   JOB_OVERRIDABLE_KEYS,
+  getEffectivePermissionsForSession,
   getEffectivePermissionsForUser,
   hasPermission,
   resolvePermissionActorId,
   type PermissionOverrideState,
 } from "@/lib/permissions";
+import { bypassesJobAccessList } from "@/lib/jobScopedAccess";
 import { normalizeListContextForLookup } from "@/lib/jobListContext";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +30,8 @@ async function canManageJobAccessNow(
   listNumber: string,
 ): Promise<boolean> {
   const role = (await resolveSessionUserRole(session)) ?? (session?.user as any)?.role;
-  if (isAdmin(role)) return true;
+  const permissionDetails = await getEffectivePermissionsForSession(session);
+  if (bypassesJobAccessList(role, permissionDetails)) return true;
   return hasPermission(session, "job.access.manage", { jobNumber, listNumber });
 }
 

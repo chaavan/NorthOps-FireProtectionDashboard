@@ -4,6 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import DashboardSidebar from '@/components/DashboardSidebar';
+import DashboardBootstrapShell, {
+  useAppBootstrap,
+  DashboardContentSkeleton,
+} from '@/components/DashboardBootstrapShell';
 import UserPickerCombobox from '@/components/UserPickerCombobox';
 import AccessDeniedOverlay from '@/components/AccessDeniedOverlay';
 import { usePermissions } from '@/lib/hooks/usePermissions';
@@ -185,6 +189,7 @@ export default function JobImportWorkspacePage() {
   const router = useRouter();
   const { data: session, status } = useSession();
   const { hasPermission, isLoading: permissionsLoading } = usePermissions();
+  const { isBootstrapping } = useAppBootstrap();
 
   const importId = String(params?.importId || '');
   const currentUserEmail = session?.user?.email?.trim().toLowerCase() ?? '';
@@ -1144,12 +1149,20 @@ export default function JobImportWorkspacePage() {
     );
   }
 
-  if (status === 'loading' || permissionsLoading || isLoading) {
+  if (isBootstrapping) {
     return (
-      <div className="min-h-screen bg-slate-100 dark:bg-slate-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
-          <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">Loading import workspace…</p>
+      <DashboardBootstrapShell message="Loading import workspace…">
+        <DashboardContentSkeleton />
+      </DashboardBootstrapShell>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="h-screen bg-slate-100 dark:bg-slate-900 flex">
+        <DashboardSidebar />
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <DashboardContentSkeleton />
         </div>
       </div>
     );

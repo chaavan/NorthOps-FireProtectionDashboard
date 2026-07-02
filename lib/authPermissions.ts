@@ -1,9 +1,14 @@
 import type { RoleKey } from "@/lib/roleTypes";
 import { isEstimateTabEnabled } from "@/lib/featureFlags";
+import { SYSTEM_ROLE_KEYS } from "@/lib/systemRoleClient";
+
+function hasFullRoleAccess(role?: RoleKey | null): boolean {
+  return role === "ADMIN" || role === SYSTEM_ROLE_KEYS.SUPER_ADMIN;
+}
 
 export function canEdit(role?: RoleKey): boolean {
   return (
-    role === "ADMIN" ||
+    hasFullRoleAccess(role) ||
     role === "PROJECT_MANAGER" ||
     role === "SALES" ||
     role === "DESIGNER"
@@ -11,12 +16,12 @@ export function canEdit(role?: RoleKey): boolean {
 }
 
 export function canEditOverviewTab(role?: RoleKey): boolean {
-  return role === "ADMIN" || role === "PROJECT_MANAGER";
+  return hasFullRoleAccess(role) || role === "PROJECT_MANAGER";
 }
 
 export function canView(role?: RoleKey): boolean {
   return (
-    role === "ADMIN" ||
+    hasFullRoleAccess(role) ||
     role === "PROJECT_MANAGER" ||
     role === "DESIGNER" ||
     role === "SALES" ||
@@ -26,7 +31,7 @@ export function canView(role?: RoleKey): boolean {
 }
 
 export function isAdmin(role?: RoleKey | null): boolean {
-  return role === "ADMIN";
+  return hasFullRoleAccess(role);
 }
 
 export function canAccessPullerTab(role?: RoleKey): boolean {
@@ -35,7 +40,7 @@ export function canAccessPullerTab(role?: RoleKey): boolean {
 
 export function canAccessDeliveryTab(role?: RoleKey): boolean {
   return (
-    role === "ADMIN" ||
+    hasFullRoleAccess(role) ||
     role === "PROJECT_MANAGER" ||
     role === "SALES" ||
     role === "EDITOR" ||
@@ -44,16 +49,16 @@ export function canAccessDeliveryTab(role?: RoleKey): boolean {
 }
 
 export function canAccessPurchaseOrderTab(role?: RoleKey): boolean {
-  return role === "ADMIN";
+  return hasFullRoleAccess(role);
 }
 
 export function canAccessEstimateTab(role?: RoleKey): boolean {
-  return isEstimateTabEnabled() && (role === "ADMIN" || role === "SALES");
+  return isEstimateTabEnabled() && (hasFullRoleAccess(role) || role === "SALES");
 }
 
 export function canEditDeliveryTab(role?: RoleKey): boolean {
   return (
-    role === "ADMIN" ||
+    hasFullRoleAccess(role) ||
     role === "PROJECT_MANAGER" ||
     role === "SALES" ||
     role === "EDITOR" ||
@@ -74,5 +79,5 @@ export function isSales(role?: RoleKey): boolean {
 }
 
 export function canAccessInventory(role?: RoleKey): boolean {
-  return role === "ADMIN" || role === "PROJECT_MANAGER";
+  return hasFullRoleAccess(role) || role === "PROJECT_MANAGER";
 }

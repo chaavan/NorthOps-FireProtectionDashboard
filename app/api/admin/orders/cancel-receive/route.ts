@@ -15,6 +15,7 @@ import {
   buildPurchaseOrderCancellationTextEmail,
 } from '@/lib/email/templates/purchaseOrderCancellation';
 import { requirePermission } from '@/lib/permissions';
+import { isPurchaseOrderEmailEnabled } from '@/lib/purchaseOrderWebhook';
 
 export const dynamic = 'force-dynamic';
 
@@ -214,6 +215,7 @@ export async function POST(request: NextRequest) {
       timeZoneName: 'short',
     });
     const webhookUrl = process.env.PURCHASE_ORDER_EMAIL_WEBHOOK_URL;
+    const purchaseOrderEmailEnabled = isPurchaseOrderEmailEnabled();
     const purchasingEmail = normalize(process.env.PURCHASING_FALLBACK_EMAIL || 'purchasing@totalfire.biz').toLowerCase();
 
     const results: CancelReceiveResult[] = [];
@@ -263,7 +265,7 @@ export async function POST(request: NextRequest) {
 
         const isFullyReceived = totalQtyFromPO > 0 && qtyReceivedOnPo >= totalQtyFromPO;
 
-        if (!skipEmails && !isFullyReceived) {
+        if (!skipEmails && !isFullyReceived && purchaseOrderEmailEnabled) {
           if (!webhookUrl) {
             hasEmailFailure = true;
             combinedSendError = 'PURCHASE_ORDER_EMAIL_WEBHOOK_URL not set';
@@ -476,7 +478,7 @@ export async function POST(request: NextRequest) {
       let hasEmailFailure = false;
       let combinedSendError: string | undefined;
 
-      if (!skipEmails && !isFullyReceived) {
+      if (!skipEmails && !isFullyReceived && purchaseOrderEmailEnabled) {
         const poGroups = new Map<string, {
           orderId: string;
           orderNumber: string;

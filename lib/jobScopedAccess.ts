@@ -1,9 +1,9 @@
 import "server-only";
 
 import { NextResponse } from "next/server";
-import { isAdmin } from "@/lib/auth";
+import { isAdmin, resolveSessionUserRole } from "@/lib/auth";
 import { canAccessJob, jobHasAccessRecords } from "@/lib/jobAccess";
-import { hasPermission } from "@/lib/permissions";
+import { getEffectivePermissionsForSession, hasPermission } from "@/lib/permissions";
 import type { PermissionKey } from "@/lib/permissionCatalog";
 
 type SessionLike =
@@ -11,13 +11,38 @@ type SessionLike =
       user?: {
         role?: string | null;
         email?: string | null;
-      } | null;
+      };
     }
   | null
   | undefined;
 
+export type JobAccessBypassDetails = {
+  isSuperAdmin?: boolean;
+  isDeveloper?: boolean;
+} | null | undefined;
+
 function getSessionUserEmail(session: SessionLike): string | null {
   return session?.user?.email?.trim().toLowerCase() || null;
+}
+
+/** Admins, Super Admins, and Developers bypass per-job access lists. */
+export function bypassesJobAccessList(
+  role: string | null | undefined,
+  permissionDetails?: JobAccessBypassDetails,
+): boolean {
+  return (
+    isAdmin(role || undefined) ||
+    permissionDetails?.isSuperAdmin === true ||
+    permissionDetails?.isDeveloper === true
+  );
+}
+
+export async function resolveJobAccessBypass(session: SessionLike): Promise<boolean> {
+  if (!session?.user) return false;
+  const role =
+    (await resolveSessionUserRole(session)) ?? (session.user.role as string | undefined);
+  const permissionDetails = await getEffectivePermissionsForSession(session);
+  return bypassesJobAccessList(role, permissionDetails);
 }
 
 export async function enforceJobAccess(params: {
@@ -26,29 +51,30 @@ export async function enforceJobAccess(params: {
   session: SessionLike;
 }): Promise<{ ok: true } | { ok: false; response: NextResponse }> {
   const { jobNumber, listNumberContext, session } = params;
-  const userRole = session?.user?.role;
-  const userEmail = getSessionUserEmail(session);
-  const isUserAdmin = isAdmin(userRole || undefined);
 
-  if (!isUserAdmin) {
-    if (!userEmail) {
+  if (await resolveJobAccessBypass(session)) {
+    return { ok: true };
+  }
+
+  const userEmail = getSessionUserEmail(session);
+  if (!userEmail) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Forbidden - Missing user email" }, { status: 403 }),
+    };
+  }
+
+  const hasRecords = await jobHasAccessRecords(jobNumber, listNumberContext);
+  if (hasRecords) {
+    const hasAccess = await canAccessJob(userEmail, jobNumber, listNumberContext);
+    if (!hasAccess) {
       return {
         ok: false,
-        response: NextResponse.json({ error: "Forbidden - Missing user email" }, { status: 403 }),
+        response: NextResponse.json(
+          { error: "Forbidden - You do not have access to this job" },
+          { status: 403 },
+        ),
       };
-    }
-    const hasRecords = await jobHasAccessRecords(jobNumber, listNumberContext);
-    if (hasRecords) {
-      const hasAccess = await canAccessJob(userEmail, jobNumber, listNumberContext);
-      if (!hasAccess) {
-        return {
-          ok: false,
-          response: NextResponse.json(
-            { error: "Forbidden - You do not have access to this job" },
-            { status: 403 },
-          ),
-        };
-      }
     }
   }
 

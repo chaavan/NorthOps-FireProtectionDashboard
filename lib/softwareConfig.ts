@@ -3,7 +3,9 @@ export type SoftwareConfig = {
   name: string;
   tagline: string;
   logoUrl: string;
+  logoIconUrl: string;
   portalEnabled: boolean;
+  locationSelectEnabled: boolean;
   portalUrl: string | null;
   rolePermissionManagementEnabled: boolean;
 };
@@ -20,11 +22,13 @@ function envBool(key: string, fallback = false): boolean {
 }
 
 export const softwareConfig: SoftwareConfig = {
-  id: env("NEXT_PUBLIC_SOFTWARE_ID", "totalfire"),
-  name: env("NEXT_PUBLIC_SOFTWARE_NAME", "Total Fire Protection"),
-  tagline: env("NEXT_PUBLIC_SOFTWARE_TAGLINE", "Operations Dashboard"),
-  logoUrl: env("NEXT_PUBLIC_SOFTWARE_LOGO_URL", "/icon.png"),
+  id: env("NEXT_PUBLIC_SOFTWARE_ID", "northops-fire"),
+  name: env("NEXT_PUBLIC_SOFTWARE_NAME", "Fire Protection"),
+  tagline: env("NEXT_PUBLIC_SOFTWARE_TAGLINE", "Operational Dashboard"),
+  logoUrl: env("NEXT_PUBLIC_SOFTWARE_LOGO_URL", "/northops-logo.png"),
+  logoIconUrl: env("NEXT_PUBLIC_SOFTWARE_LOGO_ICON_URL", "/northops-icon.png"),
   portalEnabled: envBool("NEXT_PUBLIC_ENABLE_SOFTWARE_PORTAL", true),
+  locationSelectEnabled: envBool("NEXT_PUBLIC_ENABLE_LOCATION_SELECT", true),
   portalUrl: process.env.NEXT_PUBLIC_PORTAL_URL?.trim() || null,
   rolePermissionManagementEnabled: envBool("NEXT_PUBLIC_ENABLE_ROLE_PERMISSION_MANAGEMENT", true),
 };
@@ -35,10 +39,16 @@ export function getPortalBackUrl(): string | null {
   return softwareConfig.portalUrl;
 }
 
-/** URL for the location picker (always available at /select). */
+/** URL for the location picker at /select (when enabled). */
 export function getLocationSelectUrl(
   callbackUrl?: string | null,
 ): string {
+  if (!softwareConfig.locationSelectEnabled) {
+    const login = "/login";
+    if (!callbackUrl || callbackUrl === "/") return login;
+    return `${login}?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+  }
+
   const base = "/select";
   if (!callbackUrl || callbackUrl === "/") return base;
   return `${base}?callbackUrl=${encodeURIComponent(callbackUrl)}`;

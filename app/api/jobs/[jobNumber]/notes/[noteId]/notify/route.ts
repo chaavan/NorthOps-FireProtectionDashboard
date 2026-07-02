@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { authOptions, isAdmin } from '@/lib/auth';
-import { hasPermission } from '@/lib/permissions';
-import { canAccessJob, jobHasAccessRecords } from '@/lib/jobAccess';
+import { authOptions } from '@/lib/auth';
+import { hasPermission, getEffectivePermissionsForSession } from '@/lib/permissions';
+import { enforceJobAccess, bypassesJobAccessList } from '@/lib/jobScopedAccess';
 import { normalizeListContextForLookup } from '@/lib/jobListContext';
 import { sendNoteAddedNotification } from '@/lib/notifications';
 import { prisma } from '@/lib/prisma';
@@ -15,43 +15,6 @@ function getSessionUserEmail(session: any): string | null {
 
 function getSessionUserDisplayName(session: any): string | null {
   return (session?.user as any)?.name || (session?.user as any)?.email || null;
-}
-
-async function enforceJobAccess(params: {
-  jobNumber: string;
-  listNumberContext?: string | null;
-  session: any;
-}) {
-  const { jobNumber, listNumberContext, session } = params;
-  const userRole = (session.user as any).role;
-  const userEmail = getSessionUserEmail(session);
-
-  if (isAdmin(userRole)) {
-    return { ok: true as const };
-  }
-
-  if (!userEmail) {
-    return {
-      ok: false as const,
-      response: NextResponse.json({ error: 'Forbidden - Missing user email' }, { status: 403 }),
-    };
-  }
-
-  // Scoped to the list being acted on - a job can have access records on
-  // one list but not another.
-  const hasRecords = await jobHasAccessRecords(jobNumber, listNumberContext);
-  if (hasRecords) {
-    const hasAccess = await canAccessJob(userEmail, jobNumber, listNumberContext);
-    if (!hasAccess) {
-      return {
-        ok: false as const,
-        response: NextResponse.json({ error: 'Forbidden - You do not have access to this job' }, { status: 403 }),
-      };
-    }
-  }
-  // No access records means the job is open - allow.
-
-  return { ok: true as const };
 }
 
 /**
@@ -111,8 +74,9 @@ export async function POST(
     const normalizedCreatedBy = note.createdBy?.trim() || '';
     const normalizedDisplayName = getSessionUserDisplayName(session)?.trim() || '';
     const role = (session.user as any).role;
+    const permissionDetails = await getEffectivePermissionsForSession(session);
     const canNotify =
-      isAdmin(role) ||
+      bypassesJobAccessList(role, permissionDetails) ||
       (normalizedCreatedBy && normalizedDisplayName && normalizedCreatedBy === normalizedDisplayName);
 
     if (!canNotify) {

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { authOptions, isAdmin } from '@/lib/auth';
-import { hasPermission } from '@/lib/permissions';
+import { authOptions } from '@/lib/auth';
+import { hasPermission, getEffectivePermissionsForSession } from '@/lib/permissions';
 import { prisma } from '@/lib/prisma';
-import { canAccessJob, jobHasAccessRecords } from '@/lib/jobAccess';
+import { enforceJobAccess, bypassesJobAccessList } from '@/lib/jobScopedAccess';
 import { deleteR2Object } from '@/lib/r2';
 import { normalizeListContextForLookup } from '@/lib/jobListContext';
 
@@ -15,35 +15,6 @@ function getSessionUserEmail(session: any): string | null {
 
 function getSessionUserDisplayName(session: any): string | null {
   return (session?.user as any)?.name || (session?.user as any)?.email || null;
-}
-
-async function enforceJobAccess(params: {
-  jobNumber: string;
-  listNumberContext?: string | null;
-  session: any;
-}) {
-  const { jobNumber, listNumberContext, session } = params;
-  const role = (session.user as any).role;
-  const userEmail = getSessionUserEmail(session);
-  const isUserAdmin = isAdmin(role);
-
-  if (!isUserAdmin) {
-    if (!userEmail) {
-      return { ok: false as const, response: NextResponse.json({ error: 'Forbidden - Missing user email' }, { status: 403 }) };
-    }
-    // Scoped to the list being acted on - a job can have access records on
-    // one list but not another.
-    const hasRecords = await jobHasAccessRecords(jobNumber, listNumberContext);
-    if (hasRecords) {
-      const hasAccess = await canAccessJob(userEmail, jobNumber, listNumberContext);
-      if (!hasAccess) {
-        return { ok: false as const, response: NextResponse.json({ error: 'Forbidden - You do not have access to this job' }, { status: 403 }) };
-      }
-    }
-    // No access records means the job is open - allow.
-  }
-
-  return { ok: true as const };
 }
 
 /**
@@ -77,7 +48,8 @@ export async function POST(
     }
 
     const role = (session.user as any).role;
-    const isUserAdmin = isAdmin(role);
+    const permissionDetails = await getEffectivePermissionsForSession(session);
+    const canManageAsPrivileged = bypassesJobAccessList(role, permissionDetails);
 
     // Verify note belongs to job and permission (admin OR note author)
     const note = await prisma.jobNote.findUnique({
@@ -99,7 +71,7 @@ export async function POST(
     // Normalize strings for comparison (trim and handle null/undefined)
     const normalizedCreatedBy = note.createdBy?.trim() || '';
     const normalizedDisplayName = displayName?.trim() || '';
-    const canManageNote = isUserAdmin || (normalizedCreatedBy && normalizedDisplayName && normalizedCreatedBy === normalizedDisplayName);
+    const canManageNote = canManageAsPrivileged || (normalizedCreatedBy && normalizedDisplayName && normalizedCreatedBy === normalizedDisplayName);
 
     if (!canManageNote) {
       const access = await enforceJobAccess({ jobNumber, listNumberContext, session });
@@ -110,7 +82,7 @@ export async function POST(
       // Add debug logging in development to help diagnose permission issues
       if (process.env.NODE_ENV === 'development') {
         console.error('Upload permission denied:', {
-          isUserAdmin,
+          canManageAsPrivileged,
           noteCreatedBy: note.createdBy,
           displayName,
           normalizedCreatedBy,
@@ -208,7 +180,8 @@ export async function DELETE(
     }
 
     const role = (session.user as any).role;
-    const isUserAdmin = isAdmin(role);
+    const permissionDetails = await getEffectivePermissionsForSession(session);
+    const canManageAsPrivileged = bypassesJobAccessList(role, permissionDetails);
 
     const access = await enforceJobAccess({ jobNumber, listNumberContext, session });
     if (!access.ok) return access.response;
@@ -237,13 +210,13 @@ export async function DELETE(
     // Normalize strings for comparison (trim and handle null/undefined)
     const normalizedCreatedBy = attachment.note.createdBy?.trim() || '';
     const normalizedDisplayName = displayName?.trim() || '';
-    const canManageNote = isUserAdmin || (normalizedCreatedBy && normalizedDisplayName && normalizedCreatedBy === normalizedDisplayName);
+    const canManageNote = canManageAsPrivileged || (normalizedCreatedBy && normalizedDisplayName && normalizedCreatedBy === normalizedDisplayName);
     
     if (!canManageNote) {
       // Add debug logging in development to help diagnose permission issues
       if (process.env.NODE_ENV === 'development') {
         console.error('Delete permission denied:', {
-          isUserAdmin,
+          canManageAsPrivileged,
           noteCreatedBy: attachment.note.createdBy,
           displayName,
           normalizedCreatedBy,

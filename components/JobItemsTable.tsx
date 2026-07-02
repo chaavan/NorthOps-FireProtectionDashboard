@@ -148,15 +148,15 @@ export default function JobItemsTable({
   const jobPreorderFeaturesEnabled = isJobPreorderEnabled();
 
   // Auth
-  const { canEdit: canEditSystem, user, isAdmin } = useAuth();
+  const { canEdit: canEditSystem, user, isPrivileged } = useAuth();
 
   // All of canEdit/canPullFromShop/canOrderItems/canEditLineItems/
   // canAddLineItems/canDeleteParts are always passed in as explicit
   // permission-derived overrides by the job page (which already accounts
   // for per-job permission overrides); the isAdmin/canEditSystem fallback
   // below only matters for a caller that doesn't supply them.
-  const canEdit = typeof canEditOverride === "boolean" ? canEditOverride : isAdmin || canEditSystem;
-  const defaultLineEditAccess = isAdmin || canEditSystem;
+  const canEdit = typeof canEditOverride === "boolean" ? canEditOverride : isPrivileged || canEditSystem;
+  const defaultLineEditAccess = isPrivileged || canEditSystem;
   const canPullFromShop =
     typeof canPullFromShopOverride === "boolean"
       ? canPullFromShopOverride
@@ -176,7 +176,7 @@ export default function JobItemsTable({
 
   // Check delete permissions: Admin only by default (job.puller.delete_line override applies otherwise)
   const canDeleteParts =
-    typeof canDeleteLineItemsOverride === "boolean" ? canDeleteLineItemsOverride : isAdmin;
+    typeof canDeleteLineItemsOverride === "boolean" ? canDeleteLineItemsOverride : isPrivileged;
 
   // Local state for edits
   const [edits, setEdits] = useState<Map<number, EditableFields>>(new Map());

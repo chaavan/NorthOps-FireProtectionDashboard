@@ -266,13 +266,11 @@ function getDocumentAiConfig(): DocumentAiConfig {
   const projectId = process.env.GOOGLE_DOCUMENT_AI_PROJECT_ID?.trim();
   const location = process.env.GOOGLE_DOCUMENT_AI_LOCATION?.trim();
   const processorId = process.env.GOOGLE_DOCUMENT_AI_PROCESSOR_ID?.trim();
-  const rawCredentials =
-    process.env.GOOGLE_DOCUMENT_AI_SERVICE_ACCOUNT_JSON ||
-    process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  const rawCredentials = process.env.GOOGLE_DOCUMENT_AI_SERVICE_ACCOUNT_JSON;
 
   if (!rawCredentials || !projectId || !location || !processorId) {
     const missing = [
-      !rawCredentials ? 'GOOGLE_DOCUMENT_AI_SERVICE_ACCOUNT_JSON (or GOOGLE_SERVICE_ACCOUNT_JSON)' : null,
+      !rawCredentials ? 'GOOGLE_DOCUMENT_AI_SERVICE_ACCOUNT_JSON' : null,
       !projectId ? 'GOOGLE_DOCUMENT_AI_PROJECT_ID' : null,
       !location ? 'GOOGLE_DOCUMENT_AI_LOCATION' : null,
       !processorId ? 'GOOGLE_DOCUMENT_AI_PROCESSOR_ID' : null,

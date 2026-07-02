@@ -1,6 +1,6 @@
-import { isAdmin } from '@/lib/auth';
 import { canAccessJob, jobHasAccessRecords } from '@/lib/jobAccess';
-import { hasPermission } from '@/lib/permissions';
+import { getEffectivePermissionsForSession, hasPermission } from '@/lib/permissions';
+import { bypassesJobAccessList } from '@/lib/jobScopedAccess';
 
 type SessionLike =
   | {
@@ -36,7 +36,8 @@ export async function ensureJobImportReadAccess(params: {
     return { ok: false, error: 'Unauthorized - Please sign in', status: 401 };
   }
 
-  if (isAdmin(role || undefined)) {
+  const permissionDetails = await getEffectivePermissionsForSession(session);
+  if (bypassesJobAccessList(role, permissionDetails)) {
     return { ok: true };
   }
 
@@ -73,7 +74,8 @@ export async function ensureJobImportWriteAccess(params: {
     return { ok: false, error: 'Unauthorized - Please sign in', status: 401 };
   }
 
-  if (isAdmin(role || undefined)) {
+  const permissionDetails = await getEffectivePermissionsForSession(session);
+  if (bypassesJobAccessList(role, permissionDetails)) {
     return { ok: true };
   }
 

@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { useSession } from "next-auth/react";
 import {
   Calculator,
   CalendarDays,
@@ -20,10 +19,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import UserProfile from "./UserProfile";
-import { useAuth } from "@/lib/hooks/useAuth";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import { canAccessJobDirectory, canAccessCalendar, type PermissionKey } from "@/lib/permissionCatalog";
 import { useTheme } from "@/lib/ThemeContext";
+import BrandLogo from "@/components/BrandLogo";
 import { softwareConfig } from "@/lib/softwareConfig";
 import SurveySidebarEntry from "@/components/survey/SurveySidebarEntry";
 
@@ -163,8 +162,6 @@ export default function DashboardSidebar({
 }: DashboardSidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { data: session } = useSession();
-  const { canEdit, canAccessEstimateTab } = useAuth();
   const {
     hasPermission,
     permissions,
@@ -173,20 +170,19 @@ export default function DashboardSidebar({
     isLoading: permissionsLoading,
   } = usePermissions();
   const { theme, toggleTheme } = useTheme();
-  const isAdmin = (session?.user as any)?.role === "ADMIN";
 
   const [isCollapsed, setIsCollapsed] = useState(true);
-  const [hasHydrated, setHasHydrated] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("sidebarCollapsed");
     if (saved !== null) {
-      const collapsed = saved === "true";
-      setIsCollapsed(collapsed);
-      onCollapsedChange?.(collapsed);
+      setIsCollapsed(saved === "true");
     }
-    setHasHydrated(true);
-  }, [onCollapsedChange]);
+  }, []);
+
+  useEffect(() => {
+    onCollapsedChange?.(isCollapsed);
+  }, [isCollapsed, onCollapsedChange]);
 
   const toggleSidebar = () => {
     const nextState = !isCollapsed;
@@ -259,10 +255,9 @@ export default function DashboardSidebar({
   };
 
   const brandLines = splitBrandName(softwareConfig.name);
+  const navReady = !permissionsLoading;
 
-  const sidebarTransition = hasHydrated
-    ? { transition: `width ${SIDEBAR_MS} ${SIDEBAR_EASE}` }
-    : undefined;
+  const sidebarTransition = { transition: `width ${SIDEBAR_MS} ${SIDEBAR_EASE}` };
 
   const labelRevealClass = `
     overflow-hidden whitespace-nowrap transition-all ease-[cubic-bezier(0.32,0.72,0,1)]
@@ -283,10 +278,11 @@ export default function DashboardSidebar({
         }`}
         style={sidebarTransition}
       >
-        <img
-          src={softwareConfig.logoUrl}
-          alt={softwareConfig.name}
-          className="h-11 w-11 shrink-0 rounded-lg shadow-lg transition-transform duration-500 ease-out hover:scale-105"
+        <BrandLogo
+          src={softwareConfig.logoIconUrl}
+          className={`shrink-0 object-center transition-transform duration-500 ease-out hover:scale-105 ${
+            isCollapsed ? "h-8 w-auto" : "h-9 w-auto"
+          }`}
         />
         <div
           className={`flex min-w-0 flex-1 flex-col justify-center overflow-hidden transition-all ease-[cubic-bezier(0.32,0.72,0,1)] ${
@@ -342,7 +338,19 @@ export default function DashboardSidebar({
 
       <nav className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-4">
         <div className="space-y-1">
-          {navItems.map((item) => {
+          {!navReady ? (
+            Array.from({ length: 7 }).map((_, index) => (
+              <div
+                key={`nav-skeleton-${index}`}
+                className={`animate-pulse rounded-xl bg-slate-200/80 dark:bg-slate-700/45 ${
+                  isCollapsed ? "mx-auto h-11 w-11" : "h-11 w-full"
+                }`}
+                style={{ animationDelay: `${index * 45}ms` }}
+                aria-hidden
+              />
+            ))
+          ) : (
+            navItems.map((item) => {
             const permissionKey = item.permissionKey ?? permissionByPath[item.path];
             const routeContext = {
               permissions,
@@ -353,22 +361,16 @@ export default function DashboardSidebar({
               isDeveloper ||
               isSuperAdmin ||
               canAccessJobDirectory(permissions);
-            if (item.path === "/" && !permissionsLoading && !canAccessCalendar(routeContext)) {
+            if (item.path === "/" && !canAccessCalendar(routeContext)) {
               return null;
             }
-            if (item.path === "/admin/jobs" && !permissionsLoading && !canSeeAllJobs) {
+            if (item.path === "/admin/jobs" && !canSeeAllJobs) {
               return null;
             }
             if (item.requireDeveloper && !isDeveloper && !hasPermission("dev.survey.view")) {
               return null;
             }
-            if (!permissionsLoading && permissionKey && item.path !== "/admin/jobs" && !hasPermission(permissionKey)) {
-              return null;
-            }
-            if (permissionsLoading && item.requireAdmin && !isAdmin) {
-              return null;
-            }
-            if (permissionsLoading && item.requireEstimateAccess && !canAccessEstimateTab) {
+            if (permissionKey && item.path !== "/admin/jobs" && !hasPermission(permissionKey)) {
               return null;
             }
 
@@ -376,7 +378,7 @@ export default function DashboardSidebar({
             const showChildren = !isCollapsed && active && item.children?.length;
 
             return (
-              <div key={item.path}>
+              <div key={item.path} className="animate-fade-in">
                 <SidebarNavItem
                   label={item.label}
                   active={active}
@@ -404,7 +406,8 @@ export default function DashboardSidebar({
                 ) : null}
               </div>
             );
-          })}
+          })
+          )}
         </div>
       </nav>
 
@@ -432,7 +435,16 @@ export default function DashboardSidebar({
         </button>
       </SidebarFooterSection>
 
-      {(permissionsLoading ? canEdit : hasPermission("jobs.create") || hasPermission("job_import.upload")) && (
+      {!navReady ? (
+        <SidebarFooterSection collapsed={isCollapsed}>
+          <div
+            className={`animate-pulse rounded-lg bg-slate-200/80 dark:bg-slate-700/45 ${
+              isCollapsed ? "h-10 w-10" : "h-11 w-full"
+            }`}
+            aria-hidden
+          />
+        </SidebarFooterSection>
+      ) : (hasPermission("jobs.create") || hasPermission("job_import.upload")) ? (
         <SidebarFooterSection collapsed={isCollapsed}>
           <button
             type="button"
@@ -446,7 +458,7 @@ export default function DashboardSidebar({
             </span>
           </button>
         </SidebarFooterSection>
-      )}
+      ) : null}
 
       <div
         className={`min-w-0 shrink-0 border-t border-gray-200 px-2 py-4 dark:border-slate-700 ${

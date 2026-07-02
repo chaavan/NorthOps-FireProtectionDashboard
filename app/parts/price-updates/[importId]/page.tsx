@@ -14,6 +14,7 @@ import VendorPriceImportConflictsTab from '@/components/vendorPriceImport/Vendor
 import VendorPriceImportOverviewTab from '@/components/vendorPriceImport/VendorPriceImportOverviewTab';
 import VendorPriceImportReviewTab from '@/components/vendorPriceImport/VendorPriceImportReviewTab';
 import { usePermissions } from '@/lib/hooks/usePermissions';
+import { permissionLoadingFallback } from '@/lib/clientPermissionChecks';
 import { countUnresolvedConflictGroups } from '@/lib/vendorPriceImport/conflictGroups';
 import {
   isVendorPriceImportApplied,
@@ -60,19 +61,20 @@ function VendorPriceImportReviewPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session, status: sessionStatus } = useSession();
-  const roleIsAdmin = (session?.user as { role?: string } | undefined)?.role === 'ADMIN';
-  const { hasPermission, isLoading: permissionsLoading } = usePermissions();
+  const role = (session?.user as { role?: string } | undefined)?.role;
+  const { hasPermission, isLoading: permissionsLoading, isSuperAdmin, isDeveloper } = usePermissions();
+  const loadingFallback = permissionLoadingFallback({ role, isSuperAdmin, isDeveloper });
   const canViewImports = permissionsLoading
-    ? roleIsAdmin
+    ? loadingFallback
     : hasPermission('inventory.vendor_prices.import');
   const canReviewAndImport = permissionsLoading
-    ? roleIsAdmin
+    ? loadingFallback
     : hasPermission('inventory.vendor_prices.review');
   const canCommitImports = permissionsLoading
-    ? roleIsAdmin
+    ? loadingFallback
     : hasPermission('inventory.vendor_prices.commit');
   const canDiscardImports = permissionsLoading
-    ? roleIsAdmin
+    ? loadingFallback
     : hasPermission('inventory.vendor_prices.discard');
 
   const [review, setReview] = useState<VendorPriceReviewSnapshot | null>(null);

@@ -6,6 +6,9 @@ import { useSession } from 'next-auth/react';
 import CalendarDashboard from '@/components/CalendarDashboard';
 import LocationPortal from '@/components/portal/LocationPortal';
 import AccessDeniedOverlay from '@/components/AccessDeniedOverlay';
+import DashboardBootstrapShell, {
+  useAppBootstrap,
+} from '@/components/DashboardBootstrapShell';
 import { softwareConfig } from '@/lib/softwareConfig';
 import { usePermissions } from '@/lib/hooks/usePermissions';
 import {
@@ -31,8 +34,10 @@ function HomePageContent() {
   const canViewCalendar = canAccessCalendar(routeContext);
   const fallbackRoute = getFirstAccessibleAppRoute(routeContext);
 
+  const { isBootstrapping } = useAppBootstrap();
+
   useEffect(() => {
-    if (status === 'loading' || permissionsLoading) return;
+    if (isBootstrapping) return;
     if (!softwareConfig.portalEnabled && !session) {
       router.replace('/login');
       return;
@@ -43,20 +48,15 @@ function HomePageContent() {
       router.replace(fallbackRoute);
     }
   }, [
-    status,
-    permissionsLoading,
+    isBootstrapping,
     session,
     router,
     canViewCalendar,
     fallbackRoute,
   ]);
 
-  if (status === 'loading' || (session && permissionsLoading)) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-900 text-slate-400">
-        Loading...
-      </div>
-    );
+  if (isBootstrapping) {
+    return <DashboardBootstrapShell message="Loading calendar..." />;
   }
 
   if (softwareConfig.portalEnabled && !session) {

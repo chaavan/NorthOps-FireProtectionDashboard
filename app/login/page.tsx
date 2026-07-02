@@ -1,10 +1,12 @@
 'use client';
 
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { signIn, useSession } from 'next-auth/react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Outfit } from 'next/font/google';
 import LoginInteractiveBackground from '@/components/login/LoginInteractiveBackground';
+import BrandLogo from '@/components/BrandLogo';
 import {
   getLocationSelectUrl,
   sanitizeCallbackUrl,
@@ -12,6 +14,14 @@ import {
 } from '@/lib/softwareConfig';
 import { LAST_LOCATION_KEY } from '@/lib/hooks/usePortalState';
 import { removeSurveyPopupDom } from '@/lib/survey/surveySnooze';
+
+const loginTitleFont = Outfit({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+});
+
+const needsLocationGate =
+  softwareConfig.portalEnabled && softwareConfig.locationSelectEnabled;
 
 const labelClass =
   'mb-2 block text-[10px] font-bold uppercase tracking-[0.28em] text-slate-400';
@@ -22,9 +32,8 @@ const modalCardClass =
 
 function LoginPageContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { status: sessionStatus } = useSession();
-  const callbackUrl = sanitizeCallbackUrl(searchParams?.get('callbackUrl'));
+  const [callbackUrl, setCallbackUrl] = useState('/');
   const locationSelectUrl = getLocationSelectUrl(callbackUrl);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -41,9 +50,12 @@ function LoginPageContent() {
   const resetCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [showContactModal, setShowContactModal] = useState(false);
-  const [isPortalGateReady, setIsPortalGateReady] = useState(
-    !softwareConfig.portalEnabled,
-  );
+  const [isPortalGateReady, setIsPortalGateReady] = useState(!needsLocationGate);
+
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get('callbackUrl');
+    setCallbackUrl(sanitizeCallbackUrl(raw));
+  }, []);
 
   useEffect(() => {
     removeSurveyPopupDom();
@@ -58,12 +70,14 @@ function LoginPageContent() {
   }, []);
 
   useEffect(() => {
-    if (sessionStatus === 'loading') return;
-    if (sessionStatus === 'authenticated') {
+    if (!needsLocationGate) {
       setIsPortalGateReady(true);
       return;
     }
-    if (!softwareConfig.portalEnabled) {
+
+    if (sessionStatus === 'loading') return;
+
+    if (sessionStatus === 'authenticated') {
       setIsPortalGateReady(true);
       return;
     }
@@ -84,6 +98,12 @@ function LoginPageContent() {
 
     setIsPortalGateReady(true);
   }, [locationSelectUrl, router, sessionStatus]);
+
+  useEffect(() => {
+    if (sessionStatus !== 'authenticated') return;
+    router.replace(callbackUrl);
+    router.refresh();
+  }, [callbackUrl, router, sessionStatus]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -192,7 +212,7 @@ function LoginPageContent() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [showResetModal, showContactModal]);
 
-  if (sessionStatus === 'loading' || !isPortalGateReady) {
+  if (needsLocationGate && (sessionStatus === 'loading' || !isPortalGateReady)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-400">
         Loading...
@@ -205,6 +225,7 @@ function LoginPageContent() {
       <LoginInteractiveBackground />
 
       <div className="absolute left-4 top-4 z-[120] sm:left-6 sm:top-6">
+        {softwareConfig.locationSelectEnabled ? (
         <Link
           href={locationSelectUrl}
           className="relative z-[120] inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-slate-950/55 px-3 py-2 text-sm font-medium text-slate-400 shadow-xl shadow-black/30 backdrop-blur-xl transition hover:border-blue-300/30 hover:text-blue-200"
@@ -225,25 +246,22 @@ function LoginPageContent() {
           </svg>
           Change location
         </Link>
+        ) : null}
       </div>
 
       <div className="relative z-[110] flex min-h-screen items-center justify-center p-4 py-10 pointer-events-none">
         <div className="pointer-events-auto w-full max-w-md">
-          <div className="mb-7 flex flex-col items-center text-center">
-            <div className="relative mb-4">
-              <div className="absolute -inset-5 rounded-full bg-blue-500/20 blur-2xl" />
-              <div className="absolute -inset-3 rounded-full bg-red-500/15 blur-xl" />
-              <div className="absolute -inset-1 rounded-3xl border border-blue-300/20" />
-              <img
-                src={softwareConfig.logoUrl}
-                alt={softwareConfig.name}
-                className="relative h-16 w-16 rounded-2xl shadow-2xl shadow-blue-950/50 ring-1 ring-white/15 sm:h-20 sm:w-20"
-              />
-            </div>
-            <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">
+          <div
+            className={`${loginTitleFont.className} mb-8 flex flex-col items-center gap-5 text-center sm:gap-6`}
+          >
+            <BrandLogo
+              variant="on-dark"
+              className="mx-auto h-20 w-auto max-w-[min(100%,24rem)] object-center sm:h-24"
+            />
+            <h1 className="text-[1.75rem] font-semibold tracking-[0.04em] text-white sm:text-[2rem]">
               {softwareConfig.name}
             </h1>
-            <p className="mt-2 text-xs font-bold uppercase tracking-[0.32em] text-slate-400">
+            <p className="text-[0.6875rem] font-medium uppercase tracking-[0.34em] text-slate-400">
               {softwareConfig.tagline}
             </p>
           </div>
@@ -548,15 +566,5 @@ function LoginPageContent() {
 }
 
 export default function LoginPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-400">
-          Loading...
-        </div>
-      }
-    >
-      <LoginPageContent />
-    </Suspense>
-  );
+  return <LoginPageContent />;
 }

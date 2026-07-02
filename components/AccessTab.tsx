@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { isAdmin } from '@/lib/authPermissions';
+import { useGlobalPermissionsContext } from '@/lib/PermissionsContext';
 import JobAccessOverridesModal from '@/components/JobAccessOverridesModal';
 
 interface AccessTabProps {
@@ -39,6 +40,9 @@ export default function AccessTab({
   isServiceJob,
 }: AccessTabProps) {
   const { data: session } = useSession();
+  const permissionsContext = useGlobalPermissionsContext();
+  const isSuperAdmin = permissionsContext?.isSuperAdmin === true;
+  const isDeveloper = permissionsContext?.isDeveloper === true;
   const [accessList, setAccessList] = useState<AccessRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +56,8 @@ export default function AccessTab({
 
   const userRole = (session?.user as any)?.role;
   const userEmail = (session?.user as any)?.email;
-  const isUserAdmin = isAdmin(userRole);
+  const isUserAdmin =
+    isAdmin(userRole) || isSuperAdmin || isDeveloper;
   const canManage = isUserAdmin || canManageOverride === true;
   const normalizedListContext =
     typeof listNumberContext === 'string' &&

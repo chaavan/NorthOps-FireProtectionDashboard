@@ -5,12 +5,17 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import DashboardSidebar from '@/components/DashboardSidebar';
+import DashboardBootstrapShell, {
+  useAppBootstrap,
+  DashboardContentSkeleton,
+} from '@/components/DashboardBootstrapShell';
 import AccessDeniedOverlay from '@/components/AccessDeniedOverlay';
 import AddPartModal from '@/components/AddPartModal';
 import AdjustQuantityModal from '@/components/AdjustQuantityModal';
 import EditPartModal from '@/components/EditPartModal';
 import { formatDateInAppTimeZone } from '@/lib/timezone';
 import { usePermissions } from '@/lib/hooks/usePermissions';
+import { permissionLoadingFallback } from '@/lib/clientPermissionChecks';
 
 function formatInventoryValue(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) {
@@ -444,7 +449,8 @@ function unifiedEventSummary(event: UnifiedLogEvent): string {
 export default function PartsPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
-  const { hasPermission, isLoading: permissionsLoading } = usePermissions();
+  const { hasPermission, isLoading: permissionsLoading, isSuperAdmin, isDeveloper } = usePermissions();
+  const { isBootstrapping } = useAppBootstrap();
   const [parts, setParts] = useState<Part[]>([]);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -497,15 +503,19 @@ export default function PartsPage() {
 
   // Check user role — all authenticated users can access inventory; admins also get Logs.
   const userRole = (session?.user as any)?.role;
-  const isAdmin = userRole === 'ADMIN';
-  const canViewInventory = permissionsLoading ? isAdmin : hasPermission('inventory.view');
-  const canAddPart = permissionsLoading ? isAdmin : hasPermission('inventory.add_part');
-  const canEditPart = permissionsLoading ? isAdmin : hasPermission('inventory.edit_part');
-  const canDeletePart = permissionsLoading ? isAdmin : hasPermission('inventory.delete_part');
-  const canAdjustQuantity = permissionsLoading ? isAdmin : hasPermission('inventory.adjust_quantity');
-  const canViewInventoryLogs = permissionsLoading ? isAdmin : hasPermission('inventory.logs.view');
-  const canViewCostHistory = permissionsLoading ? isAdmin : hasPermission('inventory.cost_history.view');
-  const canViewVendorPriceImports = permissionsLoading ? isAdmin : hasPermission('inventory.vendor_prices.import');
+  const loadingFallback = permissionLoadingFallback({
+    role: userRole,
+    isSuperAdmin,
+    isDeveloper,
+  });
+  const canViewInventory = permissionsLoading ? loadingFallback : hasPermission('inventory.view');
+  const canAddPart = permissionsLoading ? loadingFallback : hasPermission('inventory.add_part');
+  const canEditPart = permissionsLoading ? loadingFallback : hasPermission('inventory.edit_part');
+  const canDeletePart = permissionsLoading ? loadingFallback : hasPermission('inventory.delete_part');
+  const canAdjustQuantity = permissionsLoading ? loadingFallback : hasPermission('inventory.adjust_quantity');
+  const canViewInventoryLogs = permissionsLoading ? loadingFallback : hasPermission('inventory.logs.view');
+  const canViewCostHistory = permissionsLoading ? loadingFallback : hasPermission('inventory.cost_history.view');
+  const canViewVendorPriceImports = permissionsLoading ? loadingFallback : hasPermission('inventory.vendor_prices.import');
   const isAccessDenied = status === 'authenticated' && !permissionsLoading && !canViewInventory;
   const loadParts = useCallback(async () => {
     if (!canViewInventory) {
@@ -788,12 +798,26 @@ export default function PartsPage() {
     }
   };
 
-  if (status === 'loading' || permissionsLoading || isLoading) {
+  if (isBootstrapping) {
     return (
-      <div className="min-h-screen bg-slate-100 dark:bg-slate-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-slate-600 dark:text-slate-400 font-medium">Loading...</p>
+      <DashboardBootstrapShell message="Loading inventory...">
+        <DashboardContentSkeleton />
+      </DashboardBootstrapShell>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="h-screen bg-slate-100 dark:bg-slate-900 flex">
+        <DashboardSidebar />
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <header className="sticky top-0 z-10 bg-white dark:bg-slate-800/95 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700/50">
+            <div className="px-6 py-4">
+              <div className="h-10 w-64 animate-pulse rounded-lg bg-slate-200 dark:bg-slate-700/50" />
+              <div className="mt-2 h-4 w-80 animate-pulse rounded bg-slate-200/80 dark:bg-slate-700/40" />
+            </div>
+          </header>
+          <DashboardContentSkeleton />
         </div>
       </div>
     );

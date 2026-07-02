@@ -9,11 +9,11 @@ export type SoftwareEntry = {
 
 const defaultCatalog: SoftwareEntry[] = [
   {
-    id: "totalfire",
-    name: "Total Fire Protection",
+    id: "northops-fire",
+    name: "Fire Protection",
     description:
       "Job pulling, inventory, vendor orders, and shop operations.",
-    logoUrl: "/icon.png",
+    logoUrl: "/northops-logo.png",
     loginUrl: "/login",
     status: "active",
   },

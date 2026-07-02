@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import {
   authOptions,
-  isAdmin,
   resolveSessionUserRole,
 } from '@/lib/auth';
-import { hasPermission } from '@/lib/permissions';
+import { hasPermission, getEffectivePermissionsForSession } from '@/lib/permissions';
+import { bypassesJobAccessList } from '@/lib/jobScopedAccess';
 import { prisma } from '@/lib/prisma';
 import { getJobLinesFromDatabase } from '@/lib/jobsDatabase';
 import { canAccessJob, jobHasAccessRecords } from '@/lib/jobAccess';
@@ -200,7 +200,8 @@ export async function PUT(
     const role =
       (await resolveSessionUserRole(session)) ?? (session.user as any).role;
     const userEmail = (session.user as any).email;
-    const isUserAdmin = isAdmin(role);
+    const permissionDetails = await getEffectivePermissionsForSession(session);
+    const bypassJobAccess = bypassesJobAccessList(role, permissionDetails);
     
     const { jobNumber } = await params;
     const body = (await request.json()) as {
@@ -253,7 +254,7 @@ export async function PUT(
     // jobs without any are open to anyone with the jobs.edit_metadata
     // permission checked above (matches the pattern used by every other
     // job-mutating route, e.g. add-line/route.ts).
-    if (!isUserAdmin) {
+    if (!bypassJobAccess) {
       // Scoped to the list being edited - a job can have access records on
       // one list (e.g. a restricted contract list) but not another, and an
       // unscoped check would wrongly treat every list as restricted.

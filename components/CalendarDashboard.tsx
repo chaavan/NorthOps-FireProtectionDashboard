@@ -1111,10 +1111,16 @@ export default function CalendarDashboard() {
 
   if (isLoading && !isAccessDenied) {
     return (
-      <div className="h-screen bg-gray-50 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-slate-900 dark:text-slate-300 font-medium">Loading calendar...</p>
+      <div className="calendar-screen-root flex h-dvh overflow-hidden bg-gray-50 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+        <DashboardSidebar />
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="flex-shrink-0 border-b border-gray-200 bg-white/80 px-6 py-4 dark:border-slate-700/50 dark:bg-slate-800/80">
+            <div className="h-8 w-40 animate-pulse rounded-lg bg-slate-200 dark:bg-slate-700/50" />
+            <div className="mt-2 h-4 w-56 animate-pulse rounded bg-slate-200/80 dark:bg-slate-700/40" />
+          </div>
+          <div className="flex-1 animate-pulse bg-slate-200/40 p-6 dark:bg-slate-800/30">
+            <div className="h-full rounded-xl border border-slate-200/80 bg-white/60 dark:border-slate-700/50 dark:bg-slate-900/20" />
+          </div>
         </div>
       </div>
     );

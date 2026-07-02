@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { commitJobImport } from '@/lib/jobImportService';
+import { toPublicErrorMessage } from '@/lib/apiErrorMessage';
 import { isInitialJobAccessGrantsError } from '@/lib/initialJobAccessGrants';
 import { requireJobImportCommitAccess } from '@/lib/jobImportPermissions';
 
@@ -47,9 +48,17 @@ export async function POST(
     if (isInitialJobAccessGrantsError(error)) {
       return NextResponse.json({ error: error.message }, { status: error.statusCode });
     }
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to commit job import.' },
-      { status: 500 },
+    const message = toPublicErrorMessage(
+      error,
+      'Failed to commit job import. Review flagged rows and try again.',
     );
+    const status =
+      message.includes('too large to save') ||
+      message.includes('Required fields') ||
+      message.includes('blocking import errors') ||
+      message.includes('required before commit')
+        ? 400
+        : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

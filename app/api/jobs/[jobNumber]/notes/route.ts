@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { authOptions, isAdmin } from '@/lib/auth';
-import { hasPermission } from '@/lib/permissions';
+import { authOptions } from '@/lib/auth';
+import { hasPermission, getEffectivePermissionsForSession } from '@/lib/permissions';
 import { prisma } from '@/lib/prisma';
-import { canAccessJob, jobHasAccessRecords } from '@/lib/jobAccess';
+import { enforceJobAccess, bypassesJobAccessList } from '@/lib/jobScopedAccess';
 import { createPresignedGetUrl, deleteR2Object } from '@/lib/r2';
 import { normalizeListContextForLookup } from '@/lib/jobListContext';
 import { sendNoteAddedNotification } from '@/lib/notifications';
@@ -17,35 +17,6 @@ function getSessionUserEmail(session: any): string | null {
 
 function getSessionUserDisplayName(session: any): string | null {
   return (session?.user as any)?.name || (session?.user as any)?.email || null;
-}
-
-async function enforceJobAccess(params: {
-  jobNumber: string;
-  listNumberContext?: string | null;
-  session: any;
-}) {
-  const { jobNumber, listNumberContext, session } = params;
-  const userRole = (session.user as any).role;
-  const userEmail = getSessionUserEmail(session);
-  const isUserAdmin = isAdmin(userRole);
-
-  if (!isUserAdmin) {
-    if (!userEmail) {
-      return { ok: false as const, response: NextResponse.json({ error: 'Forbidden - Missing user email' }, { status: 403 }) };
-    }
-    // Scoped to the list being acted on - a job can have access records on
-    // one list but not another.
-    const hasRecords = await jobHasAccessRecords(jobNumber, listNumberContext);
-    if (hasRecords) {
-      const hasAccess = await canAccessJob(userEmail, jobNumber, listNumberContext);
-      if (!hasAccess) {
-        return { ok: false as const, response: NextResponse.json({ error: 'Forbidden - You do not have access to this job' }, { status: 403 }) };
-      }
-    }
-    // No access records means the job is open - allow.
-  }
-
-  return { ok: true as const };
 }
 
 /**
@@ -408,10 +379,11 @@ export async function PUT(
     }
 
     const userRole = (session.user as any).role;
-    const isUserAdmin = isAdmin(userRole);
+    const permissionDetails = await getEffectivePermissionsForSession(session);
+    const canEditAsPrivileged = bypassesJobAccessList(userRole, permissionDetails);
 
     // Check permissions: User can edit if they're admin, or if they created the note
-    const canEdit = isUserAdmin || existingNote.createdBy === getSessionUserDisplayName(session);
+    const canEdit = canEditAsPrivileged || existingNote.createdBy === getSessionUserDisplayName(session);
 
     if (!canEdit) {
       return NextResponse.json(
@@ -511,10 +483,11 @@ export async function DELETE(
     }
 
     const userRole = (session.user as any).role;
-    const isUserAdmin = isAdmin(userRole);
+    const permissionDetails = await getEffectivePermissionsForSession(session);
+    const canDeleteAsPrivileged = bypassesJobAccessList(userRole, permissionDetails);
 
     // Check permissions: User can delete if they're admin, or if they created the note
-    const canDelete = isUserAdmin || existingNote.createdBy === getSessionUserDisplayName(session);
+    const canDelete = canDeleteAsPrivileged || existingNote.createdBy === getSessionUserDisplayName(session);
 
     if (!canDelete) {
       return NextResponse.json(

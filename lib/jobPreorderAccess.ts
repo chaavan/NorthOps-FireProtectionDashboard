@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { isAdmin } from "@/lib/auth";
-import { hasPermission } from "@/lib/permissions";
+import { hasPermission, getEffectivePermissionsForSession } from "@/lib/permissions";
+import { bypassesJobAccessList } from "@/lib/jobScopedAccess";
 import { isJobPreorderEnabled } from "@/lib/featureFlags";
 import { canAccessJob, jobHasAccessRecords } from "@/lib/jobAccess";
 
@@ -62,8 +62,9 @@ export async function assertJobPreorderReadAccess(params: {
   if (!userEmail) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const isUserAdmin = isAdmin(role);
-  if (!isUserAdmin) {
+  const permissionDetails = await getEffectivePermissionsForSession({ user: sessionUser });
+  const bypassJobAccess = bypassesJobAccessList(role, permissionDetails);
+  if (!bypassJobAccess) {
     const hasRecords = await jobHasAccessRecords(params.jobNumber, listContext);
     if (hasRecords) {
       const hasAccess = await canAccessJob(userEmail, params.jobNumber, listContext);
@@ -116,8 +117,9 @@ export async function assertJobPreorderWriteAccess(params: {
     );
   }
 
-  const isUserAdmin = isAdmin(role);
-  if (!isUserAdmin) {
+  const permissionDetails = await getEffectivePermissionsForSession({ user: sessionUser });
+  const bypassJobAccess = bypassesJobAccessList(role, permissionDetails);
+  if (!bypassJobAccess) {
     const hasRecords = await jobHasAccessRecords(params.jobNumber, listContext);
     if (hasRecords) {
       const hasAccess = await canAccessJob(userEmail, params.jobNumber, listContext);

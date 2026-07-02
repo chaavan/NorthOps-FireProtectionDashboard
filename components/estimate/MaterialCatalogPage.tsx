@@ -7,12 +7,14 @@ import DashboardSidebar from "@/components/DashboardSidebar";
 import AccessDeniedOverlay from "@/components/AccessDeniedOverlay";
 import { isEstimateTabEnabled } from "@/lib/featureFlags";
 import { usePermissions } from "@/lib/hooks/usePermissions";
+import { permissionLoadingFallback } from "@/lib/clientPermissionChecks";
 import {
   addCatalogPartToDraft,
   catalogRowToPart,
   isCatalogRowAddable,
 } from "@/lib/estimate/catalogMaterialAdd";
 import type { EstimateCatalogRow, EstimateDraft } from "@/lib/estimateTypes";
+import { getWorkbookTemplateDisplayName } from "@/lib/estimate/estimateWorkbookProfile";
 import {
   estimateAlertError,
   estimateAlertSuccess,
@@ -113,16 +115,19 @@ export default function MaterialCatalogPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session, status } = useSession();
-  const { hasPermission, isLoading: permissionsLoading } = usePermissions();
+  const { hasPermission, isLoading: permissionsLoading, isSuperAdmin, isDeveloper } = usePermissions();
   const role = (session?.user as any)?.role as string | undefined;
+  const estimateLoadingFallback =
+    permissionLoadingFallback({ role, isSuperAdmin, isDeveloper }) ||
+    role === "ADMIN" ||
+    role === "SALES";
   const canAccess =
     isEstimateTabEnabled() &&
-    (permissionsLoading
-      ? role === "ADMIN" || role === "SALES"
-      : hasPermission("estimates.view"));
+    (permissionsLoading ? estimateLoadingFallback : hasPermission("estimates.view"));
   const canEditWorkbook = permissionsLoading
-    ? role === "ADMIN" || role === "SALES"
+    ? estimateLoadingFallback
     : hasPermission("estimates.edit");
+  const workbookTemplateName = getWorkbookTemplateDisplayName();
   const estimateId = searchParams?.get("estimateId");
   const variantKey = searchParams?.get("variantKey") || "base";
 
@@ -546,7 +551,7 @@ export default function MaterialCatalogPage() {
           <div>
             <h1 className={estimateSectionTitle}>Material Catalog</h1>
             <p className={estimateSectionDescription}>
-              Browse System 1 material defaults.
+              Browse {workbookTemplateName} material defaults.
             </p>
             {estimateId && canEditWorkbook ? (
               <p className="mt-1 text-xs font-semibold text-blue-700 dark:text-blue-300">

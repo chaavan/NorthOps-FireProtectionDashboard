@@ -228,14 +228,14 @@ export default function DeliveryTab({
     contractNumber: jobDetails.contractNumber ?? null,
   };
 
-  const { isAdmin } = useAuth();
-  const canEdit = isAdmin || canEditOverride === true;
-  const canMarkDelivered = isAdmin || canMarkDeliveredOverride === true;
-  const canMarkPickup = isAdmin || canMarkPickupOverride === true;
-  const canPartialDelivery = isAdmin || canPartialDeliveryOverride === true;
+  const { isPrivileged } = useAuth();
+  const canEdit = isPrivileged || canEditOverride === true;
+  const canMarkDelivered = isPrivileged || canMarkDeliveredOverride === true;
+  const canMarkPickup = isPrivileged || canMarkPickupOverride === true;
+  const canPartialDelivery = isPrivileged || canPartialDeliveryOverride === true;
   const canShowDeliveryActions =
     canEdit || canMarkDelivered || canMarkPickup || canPartialDelivery;
-  const canShowEditJobButton = isAdmin || canShowEditJobButtonOverride === true;
+  const canShowEditJobButton = isPrivileged || canShowEditJobButtonOverride === true;
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);

@@ -146,6 +146,7 @@ export default function JobDetailPage() {
     canEdit,
     isLoading: isAuthLoading,
     isAdmin,
+    isPrivileged,
     canEditOverviewTab,
   } = useAuth();
   const {
@@ -154,10 +155,10 @@ export default function JobDetailPage() {
     isLoading: permissionsLoading,
     refresh: refreshPermissions,
   } = usePermissions({ jobNumber, listNumber: listNumberContext });
-  const canUsePermission = (key: PermissionKey, fallback = canEditOverviewTab) =>
+  const canUsePermission = (key: PermissionKey, fallback = canEditOverviewTab || isPrivileged) =>
     permissionsLoading ? fallback : hasPermission(key);
   const canViewJobs = permissionsLoading
-    ? canEditOverviewTab
+    ? canEditOverviewTab || isPrivileged
     : canAccessJobDirectory(permissions);
   const canAccessPullerTab = canViewJobs && canUsePermission("job.puller.view", false);
   const canAccessDeliveryTab = canViewJobs && canUsePermission("job.delivery.view", false);
@@ -188,9 +189,9 @@ export default function JobDetailPage() {
   const canOrderLineItems = canUsePermission("job.puller.order");
   const canEditLineItems = canUsePermission("job.puller.edit_line");
   const canAddLineItems = canUsePermission("job.puller.add_line");
-  const canDeleteLineItems = canUsePermission("job.puller.delete_line", isAdmin);
+  const canDeleteLineItems = canUsePermission("job.puller.delete_line", isPrivileged);
   const canImportUpdatePdf = canUsePermission("job.puller.import_update_pdf");
-  const canDeleteJobs = canUsePermission("jobs.delete", isAdmin);
+  const canDeleteJobs = canUsePermission("jobs.delete", isPrivileged);
   const canEditPurchaseOrderUnitCost = canUsePermission(
     "job.purchase_order.edit_unit_cost",
     isAdmin,

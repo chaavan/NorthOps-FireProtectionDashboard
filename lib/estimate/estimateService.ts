@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { withDbRetry } from "@/lib/dbRetry";
 import { prisma } from "@/lib/prisma";
 import { getPricingForParts } from "@/lib/partsDatabase";
 import type {
@@ -718,38 +719,40 @@ export async function getStandaloneEstimate(params: {
   copyFromVariantKey?: string | null;
   userEmail?: string | null;
 }): Promise<StandaloneEstimateDetail> {
-  const variant = await ensureVariantRecord(params);
-  const estimate = await findEstimateOrThrow(params.estimateId);
-  const synchronizedDraft = synchronizeDraftWithEstimate(
-    variant.data as EstimateDraft,
-    estimate,
-  );
-  const computed = await computeWithPricing(synchronizedDraft);
+  return withDbRetry(async () => {
+    const variant = await ensureVariantRecord(params);
+    const estimate = await findEstimateOrThrow(params.estimateId);
+    const synchronizedDraft = synchronizeDraftWithEstimate(
+      variant.data as EstimateDraft,
+      estimate,
+    );
+    const computed = await computeWithPricing(synchronizedDraft);
 
-  if (JSON.stringify(computed.draft) !== JSON.stringify(variant.data)) {
-    await prisma.standaloneEstimateVariant.update({
-      where: { id: variant.id },
-      data: {
-        data: computed.draft,
-        subtotal: computed.summary.subtotal,
-        totalCost: computed.summary.totalCost,
-        updatedBy: params.userEmail ?? variant.updatedBy ?? variant.createdBy,
-      },
-    });
-  }
+    if (JSON.stringify(computed.draft) !== JSON.stringify(variant.data)) {
+      await prisma.standaloneEstimateVariant.update({
+        where: { id: variant.id },
+        data: {
+          data: computed.draft,
+          subtotal: computed.summary.subtotal,
+          totalCost: computed.summary.totalCost,
+          updatedBy: params.userEmail ?? variant.updatedBy ?? variant.createdBy,
+        },
+      });
+    }
 
-  const [freshEstimate, freshVariant] = await Promise.all([
-    findEstimateOrThrow(params.estimateId),
-    prisma.standaloneEstimateVariant.findUniqueOrThrow({
-      where: { id: variant.id },
-    }),
-  ]);
+    const [freshEstimate, freshVariant] = await Promise.all([
+      findEstimateOrThrow(params.estimateId),
+      prisma.standaloneEstimateVariant.findUniqueOrThrow({
+        where: { id: variant.id },
+      }),
+    ]);
 
-  return {
-    estimate: serializeEstimateRecord(freshEstimate),
-    variant: serializeVariantRecord(freshVariant),
-    computed,
-  };
+    return {
+      estimate: serializeEstimateRecord(freshEstimate),
+      variant: serializeVariantRecord(freshVariant),
+      computed,
+    };
+  });
 }
 
 export async function saveStandaloneEstimate(params: {
@@ -770,19 +773,21 @@ export async function saveStandaloneEstimate(params: {
     userEmail: params.userEmail ?? null,
   });
 
+  const projectName =
+    typeof params.projectName === "string"
+      ? params.projectName.trim() || null
+      : params.draft.project.projectName?.trim() || estimate.projectName;
+
   const title =
     typeof params.title === "string" && params.title.trim().length > 0
       ? params.title.trim()
-      : estimate.title;
+      : projectName || estimate.title;
 
   const updatedEstimate = await prisma.standaloneEstimate.update({
     where: { id: params.estimateId },
     data: {
       title,
-      projectName:
-        typeof params.projectName === "string"
-          ? params.projectName.trim() || null
-          : estimate.projectName,
+      projectName,
       projectNumber:
         typeof params.projectNumber === "string"
           ? params.projectNumber.trim() || null
@@ -843,19 +848,21 @@ export async function saveStandaloneEstimateInfo(params: {
     ...params.project,
   });
 
+  const projectName =
+    typeof params.projectName === "string"
+      ? params.projectName.trim() || null
+      : mergedProject.projectName?.trim() || estimate.projectName;
+
   const title =
     typeof params.title === "string" && params.title.trim().length > 0
       ? params.title.trim()
-      : estimate.title;
+      : projectName || estimate.title;
 
   const updatedEstimate = await prisma.standaloneEstimate.update({
     where: { id: params.estimateId },
     data: {
       title,
-      projectName:
-        typeof params.projectName === "string"
-          ? params.projectName.trim() || null
-          : estimate.projectName,
+      projectName,
       projectNumber:
         typeof params.projectNumber === "string"
           ? params.projectNumber.trim() || null
@@ -932,17 +939,21 @@ export async function updateStandaloneEstimateMetadata(params: {
         ? null
         : undefined;
 
+  const projectName =
+    typeof params.projectName === "string"
+      ? params.projectName.trim() || null
+      : existing.projectName;
+
+  const title =
+    typeof params.title === "string" && params.title.trim().length > 0
+      ? params.title.trim()
+      : projectName || existing.title;
+
   const updated = await prisma.standaloneEstimate.update({
     where: { id: existing.id },
     data: {
-      title:
-        typeof params.title === "string" && params.title.trim().length > 0
-          ? params.title.trim()
-          : existing.title,
-      projectName:
-        typeof params.projectName === "string"
-          ? params.projectName.trim() || null
-          : existing.projectName,
+      title,
+      projectName,
       projectNumber:
         typeof params.projectNumber === "string"
           ? params.projectNumber.trim() || null

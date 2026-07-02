@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions, isAdmin, resolveSessionUserIdForAudit } from '@/lib/auth';
-import { hasPermission } from '@/lib/permissions';
+import { hasPermission, getEffectivePermissionsForSession } from '@/lib/permissions';
+import { bypassesJobAccessList } from '@/lib/jobScopedAccess';
 import { prisma } from '@/lib/prisma';
 import { getJobLinesFromDatabase } from '@/lib/jobsDatabase';
 import { canAccessJob, jobHasAccessRecords } from '@/lib/jobAccess';
@@ -35,7 +36,8 @@ export async function POST(request: NextRequest) {
 
     const role = (session.user as any).role;
     const userEmail = (session.user as any).email;
-    const isUserAdmin = isAdmin(role);
+    const permissionDetails = await getEffectivePermissionsForSession(session);
+    const bypassJobAccess = bypassesJobAccessList(role, permissionDetails);
 
     const body = await request.json();
     const { jobNumber, listNumber, partNumber, listNumberContext } = body;
@@ -61,7 +63,7 @@ export async function POST(request: NextRequest) {
 
     // Check job access (gatekeeping only - capability is governed by the
     // permission check above, which already incorporates any per-job override).
-    if (!isUserAdmin) {
+    if (!bypassJobAccess) {
       const accessListScope =
         typeof listNumberContext === 'string' ? listNumberContext : finalListNumber;
       // Scoped to the list being edited - a job can have access records on

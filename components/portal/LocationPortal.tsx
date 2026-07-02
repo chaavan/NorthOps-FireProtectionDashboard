@@ -11,6 +11,7 @@ import {
 } from "@/lib/locationCatalog";
 import { usePortalState } from "@/lib/hooks/usePortalState";
 import { sanitizeCallbackUrl, softwareConfig } from "@/lib/softwareConfig";
+import BrandLogo from "@/components/BrandLogo";
 
 function buildLoginUrl(location: LocationEntry, callbackUrl: string | null) {
   if (!callbackUrl) return location.loginUrl;
@@ -127,11 +128,7 @@ export default function LocationPortal() {
 
       <div className="pointer-events-none absolute left-4 top-4 z-30 flex flex-col gap-3 sm:left-6">
         <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 shadow-2xl shadow-black/40 backdrop-blur-xl">
-          <img
-            src={softwareConfig.logoUrl}
-            alt={softwareConfig.name}
-            className="h-10 w-10 rounded-xl"
-          />
+          <BrandLogo variant="on-dark" className="h-8" />
           <div className="hidden sm:block">
             <p className="text-sm font-black">{softwareConfig.name}</p>
             <p className="text-xs text-slate-400">Location portal</p>

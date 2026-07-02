@@ -14,6 +14,11 @@ const rateLimitConfig: Record<string, { limiter: typeof apiRateLimiter; path: st
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  if (/\.(?:png|jpe?g|gif|svg|webp|ico|woff2?)$/i.test(pathname)) {
+    return NextResponse.next();
+  }
+
   const token = await getToken({ req: request });
   const identifier = token?.sub ? `user:${token.sub}` : getClientIdentifier(request);
 
@@ -82,8 +87,19 @@ export async function proxy(request: NextRequest) {
   const isAuthRoute = pathname.startsWith('/api/auth');
   const portalEnabled =
     process.env.NEXT_PUBLIC_ENABLE_SOFTWARE_PORTAL !== 'false';
+  const locationSelectEnabled =
+    process.env.NEXT_PUBLIC_ENABLE_LOCATION_SELECT !== 'false';
+
+  if (pathname.startsWith('/select') && !locationSelectEnabled) {
+    const loginUrl = new URL('/login', request.url);
+    request.nextUrl.searchParams.forEach((value, key) => {
+      loginUrl.searchParams.set(key, value);
+    });
+    return NextResponse.redirect(loginUrl);
+  }
+
   const isPublicRoute = pathname.startsWith('/login') ||
-                        pathname.startsWith('/select') ||
+                        (locationSelectEnabled && pathname.startsWith('/select')) ||
                         pathname.startsWith('/auth') ||
                         pathname.startsWith('/api/auth') ||
                         pathname.startsWith('/_next') ||
@@ -124,6 +140,6 @@ export const config = {
      * - favicon.ico (favicon file)
      * - icon.png (app icon)
      */
-    '/((?!_next/static|_next/image|favicon.ico|icon.png).*)',
+    '/((?!_next/static|_next/image|favicon.ico|icon.png|northops-logo.png|northops-icon.png|estimate-logo.png).*)',
   ],
 }

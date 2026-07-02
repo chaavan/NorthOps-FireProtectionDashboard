@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { authOptions, isAdmin } from '@/lib/auth';
-import { hasPermission } from '@/lib/permissions';
+import { authOptions } from '@/lib/auth';
+import { hasPermission, getEffectivePermissionsForSession } from '@/lib/permissions';
 import { prisma } from '@/lib/prisma';
-import { canAccessJob, jobHasAccessRecords } from '@/lib/jobAccess';
+import { bypassesJobAccessList, enforceJobAccess } from '@/lib/jobScopedAccess';
 import { isR2Configured, putR2Object } from '@/lib/r2';
 import { normalizeListContextForLookup } from '@/lib/jobListContext';
 
@@ -66,7 +66,8 @@ export async function POST(
 
     const role = (session.user as any).role;
     const userEmail = getSessionUserEmail(session);
-    const isUserAdmin = isAdmin(role);
+    const permissionDetails = await getEffectivePermissionsForSession(session);
+    const canManageAsPrivileged = bypassesJobAccessList(role, permissionDetails);
 
     const note = await prisma.jobNote.findUnique({
       where: { id: noteId },
@@ -85,28 +86,14 @@ export async function POST(
     const normalizedCreatedBy = note.createdBy?.trim() || '';
     const normalizedDisplayName = displayName?.trim() || '';
     const canManageNote =
-      isUserAdmin ||
+      canManageAsPrivileged ||
       (normalizedCreatedBy &&
         normalizedDisplayName &&
         normalizedCreatedBy === normalizedDisplayName);
 
-    if (!canManageNote && !isUserAdmin) {
-      if (!userEmail) {
-        return NextResponse.json({ error: 'Forbidden - Missing user email' }, { status: 403 });
-      }
-      // Scoped to the list being acted on - a job can have access records
-      // on one list but not another.
-      const hasRecords = await jobHasAccessRecords(jobNumber, listNumberContext);
-      if (hasRecords) {
-        const hasAccess = await canAccessJob(userEmail, jobNumber, listNumberContext);
-        if (!hasAccess) {
-          return NextResponse.json(
-            { error: 'Forbidden - You can only add attachments to notes you created' },
-            { status: 403 },
-          );
-        }
-      }
-      // No access records means the job is open - fall through and allow.
+    if (!canManageNote) {
+      const access = await enforceJobAccess({ jobNumber, listNumberContext, session });
+      if (!access.ok) return access.response;
     }
 
     if (!canManageNote) {

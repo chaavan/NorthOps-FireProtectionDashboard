@@ -7,6 +7,7 @@ import InventoryPageShell, { InventoryLoadingSpinner } from '@/components/Invent
 import AccessDeniedOverlay from '@/components/AccessDeniedOverlay';
 import VendorPriceImportUploadCard from '@/components/VendorPriceImportUploadCard';
 import { usePermissions } from '@/lib/hooks/usePermissions';
+import { permissionLoadingFallback } from '@/lib/clientPermissionChecks';
 import type { VendorPriceImportListItem } from '@/lib/vendorPriceImport/vendorPriceImportTypes';
 import { vendorPriceImportStatusLabel } from '@/lib/vendorPriceImport/reviewAnalytics';
 
@@ -28,13 +29,13 @@ function statusBadgeClass(status: string): string {
 export default function VendorPriceUpdatesPage() {
   const { data: session, status: sessionStatus } = useSession();
   const role = (session?.user as { role?: string } | undefined)?.role;
-  const roleIsAdmin = role === 'ADMIN';
-  const { hasPermission, isLoading: permissionsLoading } = usePermissions();
+  const { hasPermission, isLoading: permissionsLoading, isSuperAdmin, isDeveloper } = usePermissions();
+  const loadingFallback = permissionLoadingFallback({ role, isSuperAdmin, isDeveloper });
   const canViewImports = permissionsLoading
-    ? roleIsAdmin
+    ? loadingFallback
     : hasPermission('inventory.vendor_prices.import');
   const canReviewAndImport = permissionsLoading
-    ? roleIsAdmin
+    ? loadingFallback
     : hasPermission('inventory.vendor_prices.review');
 
   const [profiles, setProfiles] = useState<Array<{ vendorKey: string; displayName: string }>>([]);

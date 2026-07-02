@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import AccessDeniedOverlay from "@/components/AccessDeniedOverlay";
 import { isEstimateTabEnabled } from "@/lib/featureFlags";
 import { usePermissions } from "@/lib/hooks/usePermissions";
+import { permissionLoadingFallback } from "@/lib/clientPermissionChecks";
 import type {
   StandaloneEstimateBidStatus,
   StandaloneEstimateSummaryRecord,
@@ -43,22 +44,21 @@ function bidStatusClassName(status: StandaloneEstimateBidStatus | string | null 
 
 export default function StandaloneEstimateDashboard({ view }: { view: ViewMode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { data: session, status } = useSession();
-  const { hasPermission, isLoading: permissionsLoading } = usePermissions();
+  const { hasPermission, isLoading: permissionsLoading, isSuperAdmin, isDeveloper } = usePermissions();
   const role = (session?.user as any)?.role as string | undefined;
+  const estimateLoadingFallback =
+    permissionLoadingFallback({ role, isSuperAdmin, isDeveloper }) ||
+    role === "ADMIN" ||
+    role === "SALES";
   const canAccess =
     isEstimateTabEnabled() &&
-    (permissionsLoading
-      ? role === "ADMIN" || role === "SALES"
-      : hasPermission("estimates.view"));
+    (permissionsLoading ? estimateLoadingFallback : hasPermission("estimates.view"));
   const canCreate =
-    permissionsLoading
-      ? role === "ADMIN" || role === "SALES"
-      : hasPermission("estimates.create");
+    permissionsLoading ? estimateLoadingFallback : hasPermission("estimates.create");
   const canArchive =
-    permissionsLoading
-      ? role === "ADMIN" || role === "SALES"
-      : hasPermission("estimates.archive");
+    permissionsLoading ? estimateLoadingFallback : hasPermission("estimates.archive");
   const [estimates, setEstimates] = useState<StandaloneEstimateSummaryRecord[]>([]);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -103,7 +103,7 @@ export default function StandaloneEstimateDashboard({ view }: { view: ViewMode }
       void loadEstimates();
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [session, status, permissionsLoading, canAccess, router, loadEstimates, view]);
+  }, [session, status, permissionsLoading, canAccess, router, loadEstimates, view, pathname]);
 
   const totals = useMemo(() => {
     return estimates.reduce(
@@ -284,7 +284,7 @@ export default function StandaloneEstimateDashboard({ view }: { view: ViewMode }
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-semibold text-slate-900 dark:text-white">
-                        {estimate.title}
+                        {estimate.projectName || estimate.title || "Untitled Estimate"}
                       </span>
                       <span
                         className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${bidStatusClassName(
@@ -295,9 +295,9 @@ export default function StandaloneEstimateDashboard({ view }: { view: ViewMode }
                       </span>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-500">
-                      <span>{estimate.projectName || "No project name"}</span>
                       <span>{estimate.projectNumber || "No project #"}</span>
                       <span>{estimate.locationLine1 || "No location"}</span>
+                      {estimate.locationLine2 ? <span>{estimate.locationLine2}</span> : null}
                     </div>
                     <div className="mt-2 text-xs text-slate-500">
                       Updated {new Date(estimate.updatedAt).toLocaleDateString()}

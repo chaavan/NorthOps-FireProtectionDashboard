@@ -96,9 +96,9 @@ export default function NotesTab({
   const [notificationWarning, setNotificationWarning] = useState<string | null>(null);
   const [highlightedNoteId, setHighlightedNoteId] = useState<string | null>(null);
   
-  const { isAdmin, user } = useAuth();
+  const { isAdmin, isPrivileged, user } = useAuth();
   const isNoteAuthor = (note: JobNote): boolean => {
-    if (isAdmin) return true;
+    if (isAdmin || isPrivileged) return true;
     const currentUserName = user?.name || user?.email;
     return note.createdBy === currentUserName;
   };

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { isRetryableDbError, toUserFacingDbError } from "@/lib/dbRetry";
 import { hasPermission } from "@/lib/permissions";
 import {
   enforceStandaloneEstimateAccess,
@@ -37,9 +38,10 @@ export async function GET(
     return NextResponse.json(estimate);
   } catch (error) {
     console.error("Error in /api/estimates/[estimateId] GET:", error);
+    const status = isRetryableDbError(error) ? 503 : 500;
     return NextResponse.json(
-      { error: (error as Error).message },
-      { status: 500 },
+      { error: toUserFacingDbError(error) },
+      { status },
     );
   }
 }

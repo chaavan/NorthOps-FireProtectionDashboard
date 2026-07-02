@@ -6,6 +6,8 @@ const LEGACY_PUBLIC_APP_HOSTS = new Set([
   'https://totalfireprotection-xrjt.vercel.app',
   'http://totalfireprotection.vercel.app',
   'http://totalfireprotection-xrjt.vercel.app',
+  'https://northops-fire-protection-dashboard.vercel.app',
+  'http://northops-fire-protection-dashboard.vercel.app',
 ]);
 
 function stripTrailingSlash(url: string): string {

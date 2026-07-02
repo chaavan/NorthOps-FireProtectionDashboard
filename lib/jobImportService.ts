@@ -29,6 +29,11 @@ import type {
 } from '@/lib/jobImportTypes';
 import { getPartDetails } from '@/lib/partsDatabase';
 import { checkJobExists, createJobWithMerge, getNextListNumber } from '@/lib/jobsDatabase';
+import {
+  isJobLineQuantityValid,
+  MAX_JOB_LINE_QUANTITY,
+  normalizeJobLineQuantity,
+} from '@/lib/quantityMath';
 import { grantCreatorJobAccess } from '@/lib/permissions';
 import {
   applyResolvedInitialAccessGrants,
@@ -337,15 +342,47 @@ function reindexLineItemsByOrder(lineItems: ImportParsedLineItem[]): ImportParse
 
 function toNonNegativeInt(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) {
-    return Math.max(0, Math.round(value));
+    return normalizeJobLineQuantity(value);
   }
   if (typeof value === 'string') {
     const numeric = Number(value.replace(/[, ]+/g, '').replace(/[^\d.-]/g, ''));
     if (Number.isFinite(numeric)) {
-      return Math.max(0, Math.round(numeric));
+      return normalizeJobLineQuantity(numeric);
     }
   }
   return 0;
+}
+
+function validateCommitLineItemQuantities(lineItems: ImportParsedLineItem[]): void {
+  const invalid: string[] = [];
+
+  for (const item of lineItems) {
+    if (item.partNumber === NO_PARTS_PLACEHOLDER_PART_NUMBER) {
+      continue;
+    }
+
+    const checks: Array<[string, number | null | undefined]> = [
+      ['needed', item.quantityNeeded],
+      ['fab', item.quantityFab],
+      ['loose', item.quantityLoose],
+    ];
+
+    for (const [label, qty] of checks) {
+      if (!isJobLineQuantityValid(qty)) {
+        invalid.push(`${item.partNumber} (${label}: ${Number(qty).toLocaleString()})`);
+      }
+    }
+  }
+
+  if (invalid.length === 0) {
+    return;
+  }
+
+  const preview = invalid.slice(0, 5).join('; ');
+  const suffix = invalid.length > 5 ? `; and ${invalid.length - 5} more` : '';
+  throw new Error(
+    `These line items have quantities that are too large to save (likely OCR errors). Fix or remove them before creating the job: ${preview}${suffix}. Maximum allowed per line is ${MAX_JOB_LINE_QUANTITY.toLocaleString()}.`,
+  );
 }
 
 function parseDateTokenToIso(rawValue: unknown): string {
@@ -1948,6 +1985,24 @@ async function buildReviewSnapshot(params: {
         lineItemId: item.id,
       });
     }
+
+    for (const [field, qty] of [
+      ['quantityNeeded', item.quantityNeeded],
+      ['quantityFab', item.quantityFab],
+      ['quantityLoose', item.quantityLoose],
+    ] as const) {
+      if (!isJobLineQuantityValid(qty)) {
+        if (!item.validationFlags.includes('quantity_overflow')) {
+          item.validationFlags.push('quantity_overflow');
+        }
+        warnings.push({
+          code: 'quantity_overflow',
+          severity: 'error',
+          message: `Part ${item.partNumber} has an invalid ${field} (${Number(qty).toLocaleString()}). This is usually an OCR mistake — correct or remove the row before creating the job.`,
+          lineItemId: item.id,
+        });
+      }
+    }
   }
 
   const partNumberCounts = new Map<string, number>();
@@ -2921,6 +2976,8 @@ export async function commitJobImport(
   if (!jobNumber || !jobName || !listNumber || !deliveryDate) {
     throw new Error('jobNumber, jobName, listNumber, and deliveryDate are required before commit.');
   }
+
+  validateCommitLineItemQuantities(reviewSnapshot.lineItems);
 
   const savedDraftState = normalizeJobImportDraftState(jobImport.draftState);
   const accessGrantsInput =

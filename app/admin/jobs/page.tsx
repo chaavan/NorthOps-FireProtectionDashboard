@@ -3,8 +3,12 @@
 import { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import DashboardSidebar from '@/components/DashboardSidebar';
+import DashboardBootstrapShell, {
+  useAppBootstrap,
+  DashboardContentSkeleton,
+} from '@/components/DashboardBootstrapShell';
 import AccessDeniedOverlay from '@/components/AccessDeniedOverlay';
+import DashboardSidebar from '@/components/DashboardSidebar';
 import { formatDateInAppTimeZone } from '@/lib/timezone';
 import { usePermissions } from '@/lib/hooks/usePermissions';
 import {
@@ -286,14 +290,31 @@ export default function AdminJobsPage() {
     setFilter('all');
   }, [filter, jobPreorderFeaturesEnabled]);
 
-  if (status === 'loading' || permissionsLoading || isLoading) {
+  const filterOptions = useMemo(
+    () =>
+      [
+        'all',
+        'white',
+        'green',
+        'yellow',
+        'orange',
+        'pink',
+        ...(jobPreorderFeaturesEnabled ? (['lime'] as const) : []),
+        'blue',
+        'not-processed',
+        'service',
+      ] as const satisfies readonly AdminJobsStatusFilter[],
+    [jobPreorderFeaturesEnabled],
+  );
+
+  const { isBootstrapping } = useAppBootstrap();
+  const showAuthLoading = isBootstrapping;
+
+  if (showAuthLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-slate-700 dark:text-slate-400 font-medium">Loading...</p>
-        </div>
-      </div>
+      <DashboardBootstrapShell message="Loading jobs...">
+        <DashboardContentSkeleton />
+      </DashboardBootstrapShell>
     );
   }
 
@@ -334,63 +355,74 @@ export default function AdminJobsPage() {
           <div className="bg-white dark:bg-slate-800/60 border border-gray-200 dark:border-slate-700/50 rounded-xl p-6 sm:p-8 flex flex-col overflow-hidden min-h-0 h-full">
             {/* Filters and Search */}
             <div className="mb-6 space-y-4 flex-shrink-0">
-              <div className="flex w-full min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="relative w-full min-w-0 lg:flex-1 lg:min-w-[min(100%,20rem)]">
-                  <input
-                    type="text"
-                    placeholder="Search by job number, job name, or list number..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full min-w-0 px-4 py-2.5 pl-11 text-base bg-white dark:bg-slate-800/80 border border-gray-300 dark:border-slate-600/80 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/80 text-slate-900 dark:text-white placeholder:text-slate-500 dark:placeholder:text-slate-500 shadow-sm hover:border-gray-400 dark:hover:border-slate-500/80 transition-all"
-                  />
-                  <svg
-                    className="absolute left-3.5 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-500 dark:text-slate-400 pointer-events-none"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
-                <div className="flex min-w-0 max-w-full flex-wrap gap-2">
-                  {(
-                    [
-                      'all',
-                      'white',
-                      'green',
-                      'yellow',
-                      'orange',
-                      'pink',
-                      ...(jobPreorderFeaturesEnabled ? (['lime'] as const) : []),
-                      'blue',
-                      'not-processed',
-                      'service',
-                    ] as const satisfies readonly AdminJobsStatusFilter[]
-                  ).map((statusFilter) => (
-                    <button
-                      key={statusFilter}
-                      onClick={() => setFilter(statusFilter)}
-                      className={`px-4 py-2 rounded-xl font-semibold text-sm transition-all border ${
-                        filter === statusFilter
-                          ? statusFilter === 'service'
-                            ? 'bg-purple-600 text-white border-purple-700 shadow-md'
-                            : getStatusColor(statusFilter) + ' shadow-md'
-                          : 'bg-gray-100 dark:bg-slate-700/50 text-slate-700 dark:text-slate-300 border-gray-300 dark:border-slate-600/80 hover:bg-gray-200 dark:hover:bg-slate-700/70'
-                      }`}
-                    >
-                      {statusFilter === 'all' ? 'All' : statusFilter === 'service' ? 'Service jobs' : getStatusLabel(statusFilter)}
-                    </button>
-                  ))}
-                </div>
+              <div className="relative w-full min-w-0">
+                <input
+                  type="text"
+                  placeholder="Search by job number, job name, or list number..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full min-w-0 px-4 py-2.5 pl-11 text-base bg-white dark:bg-slate-800/80 border border-gray-300 dark:border-slate-600/80 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/80 text-slate-900 dark:text-white placeholder:text-slate-500 dark:placeholder:text-slate-500 shadow-sm hover:border-gray-400 dark:hover:border-slate-500/80 transition-all"
+                />
+                <svg
+                  className="absolute left-3.5 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-500 dark:text-slate-400 pointer-events-none"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
               </div>
-              <div className="text-sm text-slate-600 dark:text-slate-400">
-                Showing {filteredJobs.length} of {jobs.length} jobs
+
+              <div
+                className="flex w-full min-w-0 flex-wrap items-center justify-start gap-x-4 gap-y-2"
+                role="tablist"
+                aria-label="Filter jobs by status"
+              >
+                {filterOptions.map((statusFilter) => (
+                  <button
+                    key={statusFilter}
+                    type="button"
+                    role="tab"
+                    aria-selected={filter === statusFilter}
+                    onClick={() => setFilter(statusFilter)}
+                    className={`whitespace-nowrap text-xs font-semibold transition-all duration-200 ease-out sm:text-sm ${
+                      filter === statusFilter
+                        ? statusFilter === 'service'
+                          ? 'rounded-lg bg-purple-600 px-3 py-1.5 text-white sm:px-4 sm:py-2'
+                          : `${getStatusColor(statusFilter)} rounded-lg px-3 py-1.5 sm:px-4 sm:py-2`
+                        : 'px-1 py-1 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                    }`}
+                  >
+                    {statusFilter === 'all' ? 'All' : statusFilter === 'service' ? 'Service jobs' : getStatusLabel(statusFilter)}
+                  </button>
+                ))}
+              </div>
+
+              <div className="text-sm text-slate-600 dark:text-slate-400 transition-opacity duration-200">
+                {isLoading
+                  ? 'Loading jobs...'
+                  : `Showing ${filteredJobs.length} of ${jobs.length} jobs`}
               </div>
             </div>
 
             {/* Jobs Table */}
-            <div className="flex-1 overflow-y-auto overflow-x-auto min-h-0">
-              <table className="w-full">
+            <div
+              className={`flex-1 overflow-y-auto overflow-x-auto min-h-0 transition-opacity duration-300 ease-out ${
+                isLoading ? 'opacity-60' : 'opacity-100'
+              }`}
+            >
+              {isLoading ? (
+                <div className="space-y-3 px-1 py-2" aria-hidden="true">
+                  {Array.from({ length: 8 }).map((_, index) => (
+                    <div
+                      key={index}
+                      className="h-12 animate-pulse rounded-lg bg-slate-200/80 dark:bg-slate-700/50"
+                      style={{ animationDelay: `${index * 60}ms` }}
+                    />
+                  ))}
+                </div>
+              ) : (
+              <table key={filter} className="w-full animate-fade-in">
                 <thead className="sticky top-0 z-10">
                   <tr className="border-b-2 border-slate-200 dark:border-slate-700/50 bg-white dark:bg-slate-800/95 backdrop-blur-sm">
                     <th className="text-left py-3 px-4 font-bold text-slate-600 dark:text-slate-300 text-sm uppercase tracking-wider">Job Number</th>
@@ -502,6 +534,7 @@ export default function AdminJobsPage() {
                   )}
                 </tbody>
               </table>
+              )}
             </div>
           </div>
         </main>

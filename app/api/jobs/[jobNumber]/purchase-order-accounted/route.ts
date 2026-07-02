@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { authOptions, isAdmin } from '@/lib/auth';
-import { hasPermission } from '@/lib/permissions';
+import { authOptions } from '@/lib/auth';
+import { hasPermission, getEffectivePermissionsForSession } from '@/lib/permissions';
+import { bypassesJobAccessList } from '@/lib/jobScopedAccess';
 import { prisma } from '@/lib/prisma';
 import {
   canAccessJob,
@@ -79,7 +80,8 @@ export async function PATCH(
     }
 
     // Check job access (gatekeeping only).
-    if (!isAdmin(role)) {
+    const permissionDetails = await getEffectivePermissionsForSession(session);
+    if (!bypassesJobAccessList(role, permissionDetails)) {
       // Scoped to the list being acted on - a job can have access records
       // on one list but not another.
       const hasRecords = await jobHasAccessRecords(jobNumber, listNumberContext ?? listNumber);

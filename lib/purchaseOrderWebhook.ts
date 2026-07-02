@@ -14,9 +14,26 @@ export type PurchaseOrderWebhookPayload = {
   items: unknown[];
 };
 
+export type PurchaseOrderWebhookResult =
+  | { ok: true; mode: 'email_sent' }
+  | { ok: true; mode: 'skipped' }
+  | { ok: false; error: string };
+
 export function getPurchaseOrderWebhookUrl(): string | null {
   const url = process.env.PURCHASE_ORDER_EMAIL_WEBHOOK_URL?.trim();
   return url || null;
+}
+
+/** When false, orders are recorded in-app only (no n8n / supplier email). */
+export function isPurchaseOrderEmailEnabled(): boolean {
+  const explicit = process.env.PURCHASE_ORDER_EMAIL_ENABLED?.trim().toLowerCase();
+  if (explicit === 'false' || explicit === '0' || explicit === 'no') {
+    return false;
+  }
+  if (explicit === 'true' || explicit === '1' || explicit === 'yes') {
+    return Boolean(getPurchaseOrderWebhookUrl());
+  }
+  return Boolean(getPurchaseOrderWebhookUrl());
 }
 
 export function formatPurchaseOrderWebhookError(status: number, details: string): string {
@@ -49,13 +66,14 @@ export function formatPurchaseOrderWebhookError(status: number, details: string)
 
 export async function sendPurchaseOrderWebhook(
   payload: PurchaseOrderWebhookPayload,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<PurchaseOrderWebhookResult> {
+  if (!isPurchaseOrderEmailEnabled()) {
+    return { ok: true, mode: 'skipped' };
+  }
+
   const webhookUrl = getPurchaseOrderWebhookUrl();
   if (!webhookUrl) {
-    return {
-      ok: false,
-      error: 'PURCHASE_ORDER_EMAIL_WEBHOOK_URL is not set on the server.',
-    };
+    return { ok: true, mode: 'skipped' };
   }
 
   try {
@@ -77,7 +95,7 @@ export async function sendPurchaseOrderWebhook(
       };
     }
 
-    return { ok: true };
+    return { ok: true, mode: 'email_sent' };
   } catch (error) {
     return {
       ok: false,

@@ -5,6 +5,10 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import DashboardSidebar from "@/components/DashboardSidebar";
+import DashboardBootstrapShell, {
+  useAppBootstrap,
+  DashboardContentSkeleton,
+} from "@/components/DashboardBootstrapShell";
 import AccessDeniedOverlay from "@/components/AccessDeniedOverlay";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import DevSurveyIndividualResponse from "@/components/survey/DevSurveyIndividualResponse";
@@ -115,6 +119,7 @@ function DevSurveyPageContent() {
   const userFromQuery = searchParams?.get("user");
   const { data: session, status } = useSession();
   const { isDeveloper, hasPermission, isLoading: permissionsLoading } = usePermissions();
+  const { isBootstrapping } = useAppBootstrap();
   const canAccessSurveyAdmin = isDeveloper || hasPermission("dev.survey.view");
   const [rounds, setRounds] = useState<SurveyRound[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
@@ -384,8 +389,21 @@ function DevSurveyPageContent() {
     window.open(`/api/dev/survey/${encodeURIComponent(selectedId)}/pdf`, "_blank", "noopener,noreferrer");
   };
 
-  if (status === "loading" || permissionsLoading || isLoading) {
-    return <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-300">Loading survey dashboard...</div>;
+  if (isBootstrapping) {
+    return (
+      <DashboardBootstrapShell message="Loading survey dashboard...">
+        <DashboardContentSkeleton />
+      </DashboardBootstrapShell>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen bg-slate-950 text-white">
+        <DashboardSidebar />
+        <DashboardContentSkeleton />
+      </div>
+    );
   }
 
   if (!canAccessSurveyAdmin) {

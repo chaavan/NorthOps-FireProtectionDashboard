@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { MovementType } from '@prisma/client';
-import { authOptions, isAdmin, resolveSessionUserIdForAudit } from '@/lib/auth';
+import { authOptions, resolveSessionUserIdForAudit } from '@/lib/auth';
+import { getEffectivePermissionsForSession } from '@/lib/permissions';
+import { bypassesJobAccessList } from '@/lib/jobScopedAccess';
 import { prisma } from '@/lib/prisma';
 import { cache, cacheKeys } from '@/lib/cache';
 import { deleteR2Object } from '@/lib/r2';
@@ -53,7 +55,8 @@ export async function POST(request: NextRequest) {
     }
 
     const role = (session.user as any).role;
-    if (!isAdmin(role)) {
+    const permissionDetails = await getEffectivePermissionsForSession(session);
+    if (!bypassesJobAccessList(role, permissionDetails)) {
       return NextResponse.json(
         { error: 'Forbidden - Admin access required to delete jobs' },
         { status: 403 }

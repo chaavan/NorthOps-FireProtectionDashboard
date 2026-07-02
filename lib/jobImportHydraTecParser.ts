@@ -6,6 +6,7 @@ import type {
   ImportParsedJobInfo,
   ImportParsedLineItem,
 } from '@/lib/jobImportTypes';
+import { normalizeJobLineQuantity } from '@/lib/quantityMath';
 
 /**
  * Deterministic parser for HydraTec's .HVUF picksheet export. No OCR, no AI —
@@ -192,7 +193,7 @@ function toNonNegativeInt(value: string | null | undefined): number {
   if (!text) return 0;
   const numeric = Number(text.replace(/[^\d.-]/g, ''));
   if (!Number.isFinite(numeric)) return 0;
-  return Math.max(0, Math.round(numeric));
+  return normalizeJobLineQuantity(numeric);
 }
 
 function lineLooksLikeColumnHeader(line: DocumentAiLine): boolean {

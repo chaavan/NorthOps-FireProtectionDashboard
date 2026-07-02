@@ -11,6 +11,7 @@ import RoleOverviewTab from "@/components/roles/RoleOverviewTab";
 import RolePermissionsEditor from "@/components/roles/RolePermissionsEditor";
 import WarningConfirmModal from "@/components/WarningConfirmModal";
 import { usePermissions } from "@/lib/hooks/usePermissions";
+import { permissionLoadingFallback } from "@/lib/clientPermissionChecks";
 import { useUnsavedChangesGuard } from "@/lib/hooks/useUnsavedChangesGuard";
 import { softwareConfig } from "@/lib/softwareConfig";
 import type { PermissionKey } from "@/lib/permissionCatalog";
@@ -38,11 +39,16 @@ export default function EditRolePage() {
   const initialPageId = searchParams?.get("page");
 
   const { data: session, status } = useSession();
-  const { hasPermission, isLoading: isPermissionsLoading } = usePermissions();
-  const isAdmin = (session?.user as any)?.role === "ADMIN";
+  const { hasPermission, isLoading: isPermissionsLoading, isSuperAdmin, isDeveloper } = usePermissions();
   const canManage =
     softwareConfig.rolePermissionManagementEnabled &&
-    (isPermissionsLoading ? isAdmin : hasPermission("users.permissions.edit"));
+    (isPermissionsLoading
+      ? permissionLoadingFallback({
+          role: (session?.user as any)?.role,
+          isSuperAdmin,
+          isDeveloper,
+        })
+      : hasPermission("users.permissions.edit"));
 
   const [role, setRole] = useState<RoleRecord | null>(null);
   const [form, setForm] = useState<RoleFormValues>(defaultRoleFormValues());

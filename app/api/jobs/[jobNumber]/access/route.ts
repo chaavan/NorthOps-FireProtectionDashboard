@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { authOptions, isAdmin, resolveSessionUserRole } from '@/lib/auth';
-import { hasPermission, getEffectivePermissionsForUser } from '@/lib/permissions';
+import { authOptions, resolveSessionUserRole } from '@/lib/auth';
+import { hasPermission, getEffectivePermissionsForSession, getEffectivePermissionsForUser } from '@/lib/permissions';
+import { bypassesJobAccessList } from '@/lib/jobScopedAccess';
 import { isUserDeactivated } from '@/lib/activeUsers';
 import {
   JOB_ACCESS_SOURCES,
@@ -22,7 +23,8 @@ async function canManageJobAccessNow(
   listNumber: string,
 ): Promise<boolean> {
   const role = (await resolveSessionUserRole(session)) ?? (session?.user as any)?.role;
-  if (isAdmin(role)) return true;
+  const permissionDetails = await getEffectivePermissionsForSession(session);
+  if (bypassesJobAccessList(role, permissionDetails)) return true;
   return hasPermission(session, 'job.access.manage', { jobNumber, listNumber });
 }
 

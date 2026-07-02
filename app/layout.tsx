@@ -1,11 +1,11 @@
 import type { Metadata, Viewport } from 'next'
-import Script from 'next/script'
 import './globals.css'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import SessionProvider from '@/components/SessionProvider'
 import SurveyPopupHost from '@/components/survey/SurveyPopupHost'
 import { SurveyProvider } from '@/lib/survey/SurveyContext'
 import { ThemeProvider } from '@/lib/ThemeContext'
+import { PermissionsProvider } from '@/lib/PermissionsContext'
 import { softwareConfig } from '@/lib/softwareConfig'
 
 export const metadata: Metadata = {
@@ -29,21 +29,16 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className="dark" suppressHydrationWarning>
       <body suppressHydrationWarning>
-        <Script
-          id="theme-init"
-          strategy="beforeInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('theme');var d=document.documentElement;if(t==='light'){d.classList.remove('dark')}else{d.classList.add('dark')}}catch(e){}})();`,
-          }}
-        />
         <ThemeProvider>
           <SessionProvider>
-            <SurveyProvider>
-              {children}
-              <SurveyPopupHost />
-            </SurveyProvider>
+            <PermissionsProvider>
+              <SurveyProvider>
+                {children}
+                <SurveyPopupHost />
+              </SurveyProvider>
+            </PermissionsProvider>
           </SessionProvider>
         </ThemeProvider>
       </body>

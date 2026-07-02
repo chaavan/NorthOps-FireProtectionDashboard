@@ -26,6 +26,7 @@ import {
   useEstimateEditorPermissions,
 } from "@/components/estimate/EstimateEditorPermissionsContext";
 import { isEstimateTabEnabled } from "@/lib/featureFlags";
+import { toUserFacingDbError } from "@/lib/dbRetry";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import type {
   EstimateCatalogRow,
@@ -60,6 +61,12 @@ import {
   SYSTEM1_SECTION_ADJUSTMENT_RULES,
   parseSheetRowFromCatalogKey,
 } from "@/lib/estimate/system1SectionAdjustments";
+import {
+  getEstimateWorkbookProfile,
+  getWorkbookTemplateDisplayName,
+  productionPeriodToHourlyRate,
+  sprinklersDisplayFactor,
+} from "@/lib/estimate/estimateWorkbookProfile";
 import {
   estimateAccentBadge,
   estimateBadge,
@@ -547,7 +554,7 @@ export default function StandaloneEstimateEditor({ estimateId }: { estimateId: s
       hasLoadedDetailRef.current = true;
       await loadVariants(estimateId);
     } catch (loadError) {
-      setError((loadError as Error).message);
+      setError(toUserFacingDbError(loadError));
     } finally {
       setIsDetailLoading(false);
     }
@@ -565,16 +572,22 @@ export default function StandaloneEstimateEditor({ estimateId }: { estimateId: s
         !canEditWorkbook &&
         !canSavePricingDraft;
 
+      const projectName = draftToSave.project.projectName?.trim() || "";
+      const projectNumber = draftToSave.project.systemLabel?.trim() || "";
+      const locationLine1 = draftToSave.project.projectLocationLine1?.trim() || "";
+      const locationLine2 = draftToSave.project.projectLocationLine2?.trim() || "";
+      const title = projectName || detail?.estimate.title || "Untitled Estimate";
+
       return {
         variantKey: activeVariantKey,
         ...(useInfoOnlySave
           ? { saveMode: "info" as const, draft: { project: draftToSave.project } }
           : { draft: draftToSave }),
-        title: detail?.estimate.title,
-        projectName: draftToSave.project.projectName,
-        projectNumber: draftToSave.project.systemLabel,
-        locationLine1: draftToSave.project.projectLocationLine1,
-        locationLine2: draftToSave.project.projectLocationLine2,
+        title,
+        projectName: projectName || null,
+        projectNumber: projectNumber || null,
+        locationLine1: locationLine1 || null,
+        locationLine2: locationLine2 || null,
       };
     },
     [activeVariantKey, canEditInfo, canEditWorkbook, canSavePricingDraft, detail?.estimate.title],
@@ -1483,7 +1496,7 @@ export default function StandaloneEstimateEditor({ estimateId }: { estimateId: s
     <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-slate-900">
       <DashboardSidebar />
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden p-4 md:p-6">
-        {error ? (
+        {error && selectedEstimate ? (
           <div className="mb-4 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
             {error}
           </div>
@@ -1493,8 +1506,24 @@ export default function StandaloneEstimateEditor({ estimateId }: { estimateId: s
           <div className="flex min-h-[60vh] items-center justify-center">
             <div className="max-w-md text-center">
               <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
-                {isDetailLoading ? "Loading estimate..." : "Estimate not found"}
+                {isDetailLoading
+                  ? "Loading estimate..."
+                  : error
+                    ? "Unable to load estimate"
+                    : "Estimate not found"}
               </h2>
+              {error && !isDetailLoading ? (
+                <div className="mt-4 space-y-4">
+                  <p className="text-sm text-slate-600 dark:text-slate-300">{error}</p>
+                  <button
+                    type="button"
+                    onClick={() => void loadEstimate(estimateId, activeVariantKey)}
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
         ) : (
@@ -1914,6 +1943,7 @@ function ManualMaterialsSection({
   onSectionAdjustmentPercentChange: (cell: string, percent: number | null) => void;
 }) {
   const { canEditWorkbook } = useEstimateEditorPermissions();
+  const workbookTemplateName = getWorkbookTemplateDisplayName();
   const lines = computed.visibleMaterialLines;
   const catalogRows = useMemo(() => {
     const rows = draft.materials.workbookCatalog?.rows?.length
@@ -2107,7 +2137,7 @@ function ManualMaterialsSection({
     <>
       <EstimateSectionCard
         title="Materials"
-        description="Review selected System 1 catalog parts, custom parts, and child materials."
+        description={`Review selected ${workbookTemplateName} catalog parts, custom parts, and child materials.`}
         className="flex min-h-0 flex-1 flex-col"
         bodyClassName="flex min-h-0 flex-1 flex-col p-5"
         rightSlot={
@@ -2375,7 +2405,7 @@ function ManualMaterialsSection({
             {modalMode === "inventory" ? (
               <InventoryPickerModal
                 title="Add Catalog Part"
-                description="Search the copied System 1 catalog and pick a part to add as a parent line."
+                description={`Search the ${workbookTemplateName} catalog and pick a part to add as a parent line.`}
                 quantity={inventoryQuantity}
                 manualCost={inventoryManualCost}
                 query={inventoryQuery}
@@ -2939,10 +2969,11 @@ function FieldCostSection({
   onBlur: (event: FocusEvent<HTMLInputElement>) => void;
   fieldInputOverrides?: Record<string, unknown>;
 }) {
+  const workbookProfile = getEstimateWorkbookProfile();
   return (
     <EstimateSectionCard
       title="Field Cost"
-      description="Rows 13-72 from System 1. Green cells are locked calculations; yellow cells are optional inputs and adjustable rates."
+      description={workbookProfile.fieldCostDescription}
       rightSlot={
         <div className="flex flex-wrap items-center justify-end gap-2">
           {summary.map((item) => (
@@ -2966,6 +2997,7 @@ function FieldCostSection({
           rows={FIELD_PIPE_ROWS.map((row) => rowByNumber(rows, row)).filter(presentWorkbookRow)}
           onCommit={onCommit}
           fieldInputOverrides={fieldInputOverrides}
+          workDayHours={workbookProfile.workDayHours}
         />
         <FieldProductionTable
           title="CPVC Joints"
@@ -3171,7 +3203,7 @@ function FieldProductionTable({
             const minutesDisplayValue = row.minutes ?? row.rate;
             const sprinklersDisplayValue =
               isMinutesEditable && row.minutes && row.minutes > 0
-                ? 96 / row.minutes
+                ? sprinklersDisplayFactor() / row.minutes
                 : null;
             const rateColumnDisplayValue = row.unitRate ?? row.rate;
 
@@ -3248,6 +3280,7 @@ function PipeFootageTable({
   rows,
   onCommit,
   fieldInputOverrides,
+  workDayHours,
 }: {
   rows: EstimateWorkbookSectionRow[];
   onCommit: (
@@ -3256,6 +3289,7 @@ function PipeFootageTable({
     value: number | string | null,
   ) => void;
   fieldInputOverrides: Record<string, unknown>;
+  workDayHours: number;
 }) {
   const restoreDefaults = () => {
     rows.forEach((row) => {
@@ -3286,7 +3320,7 @@ function PipeFootageTable({
             <th className="px-3 py-2">Feet/Hour</th>
             <th className="px-3 py-2">Hours</th>
             <th className="px-3 py-2">Days</th>
-            <th className="px-3 py-2">Feet/16 Hours</th>
+            <th className="px-3 py-2">Feet/{workDayHours} Hours</th>
           </tr>
         </thead>
         <tbody className={estimateWorkbookTableBody}>
@@ -3310,7 +3344,7 @@ function PipeFootageTable({
                 : displayRate === null || displayRate === undefined || displayRate === ""
                   ? 0
                   : Number.isFinite(Number(displayRate))
-                    ? Number(displayRate) / 16
+                    ? productionPeriodToHourlyRate(Number(displayRate))
                     : 0;
             const visiblyAdjusted = !valuesMatchDefault(displayRate, defaultRate);
             return (
@@ -3608,10 +3642,11 @@ function ShopCostSection({
   onBlur: (event: FocusEvent<HTMLInputElement>) => void;
   shopInputOverrides?: Record<string, unknown>;
 }) {
+  const workbookProfile = getEstimateWorkbookProfile();
   return (
     <EstimateSectionCard
       title="Shop Cost"
-      description="Rows 73-83 from System 1. Fabrication and trucking auto-calculate from upstream inputs; yellow cells indicate manual overrides."
+      description={workbookProfile.shopCostDescription}
       rightSlot={
         <div className="flex flex-wrap items-center justify-end gap-2">
           {summary.map((item) => (
@@ -3939,10 +3974,11 @@ function DesignCostSection({
   onBlur: (event: FocusEvent<HTMLInputElement>) => void;
   designInputOverrides?: Record<string, unknown>;
 }) {
+  const workbookProfile = getEstimateWorkbookProfile();
   return (
     <EstimateSectionCard
       title="Design Cost"
-      description="Rows 85-97 from System 1. Calculation basis, design hours, and travel auto-derive; yellow cells indicate manual overrides."
+      description={workbookProfile.designCostDescription}
       rightSlot={
         <div className="flex flex-wrap items-center justify-end gap-2">
           {summary.map((item) => (
@@ -4866,6 +4902,7 @@ function MaterialCatalogModal({
   onAdd: (part: PartSearchResult, quantity: number, manualUnitCost: number | null) => void;
   onClose: () => void;
 }) {
+  const workbookTemplateName = getWorkbookTemplateDisplayName();
   const [query, setQuery] = useState("");
   const [sectionFilter, setSectionFilter] = useState("all");
   const [subcategoryFilter, setSubcategoryFilter] = useState("all");
@@ -4981,7 +5018,7 @@ function MaterialCatalogModal({
           <div>
             <h2 className={estimateModalTitle}>Material Catalog</h2>
             <p className={estimateModalDescription}>
-              Browse System 1 catalog parts by section, price, workbook cell, and selected status.
+              Browse {workbookTemplateName} catalog parts by section, price, workbook cell, and selected status.
             </p>
           </div>
           <button
@@ -5181,6 +5218,7 @@ function InventoryResults({
   isSearching: boolean;
   onPick: (part: PartSearchResult) => void;
 }) {
+  const workbookTemplateName = getWorkbookTemplateDisplayName();
   return (
     <div className={estimateInventoryResultsPanel}>
       {isSearching ? (
@@ -5190,7 +5228,7 @@ function InventoryResults({
         </div>
       ) : results.length === 0 ? (
         <div className="flex h-full min-h-[8rem] items-center justify-center p-4 text-center text-sm text-slate-500">
-          Type at least 2 characters to search the System 1 catalog.
+          Type at least 2 characters to search the {workbookTemplateName} catalog.
         </div>
       ) : (
         results.map((part) => (
@@ -5745,9 +5783,12 @@ function PricingControlsSection({
           <p className={sectionDescriptionClass}>Read-only totals update as pricing controls are changed.</p>
         </div>
         <div className={estimatePricingFieldGrid}>
-          {renderReadonly("Fees / PE / Bond", summary.feesTotal, true)}
           {renderReadonly("Subtotal", summary.subtotal)}
+          {renderReadonly("Overhead", summary.overheadCost)}
           {renderReadonly("With Overhead", summary.subtotalWithOverhead)}
+          {renderReadonly("Profit", summary.profitCost)}
+          {renderReadonly("With Profit", summary.subtotalWithProfit)}
+          {renderReadonly("Fees / PE / Bond", summary.feesTotal, true)}
           {renderReadonly("Final Total", summary.totalCost, true)}
         </div>
       </div>

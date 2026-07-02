@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { ROLE_TEMPLATE_SEED } from "../lib/permissionCatalog";
 

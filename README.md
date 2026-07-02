@@ -19,27 +19,23 @@ This application provides a streamlined interface for shop pullers and receivers
 npm install
 ```
 
-### 2. Configure Google Sheets Access
+### 2. Configure environment
 
-The app uses an API key for simplified authentication:
-
-1. **Share the Google Sheet**:
-   - Open: https://docs.google.com/spreadsheets/d/1U-az1-yK4p-GZAbdoK9O9ujM4belavYeBRNogxxEwUQ
-   - Click "Share" → Set to "Anyone with the link - Editor"
-
-2. **The API key is pre-configured** - see `ENV_SETUP.md` for details
-
-### 3. Set Environment Variables
-
-Create a `.env.local` file in the root directory:
+Copy the example env file and fill in your own credentials (never commit real secrets):
 
 ```bash
-GOOGLE_API_KEY=AIzaSyB67btcaTYGDr44Xz3Y2Upd1y7cXY1jpwA
+cp ENV_EXAMPLE.txt .env.local
 ```
 
-⚠️ **Security Note**: Keep this file secure and never commit to git!
+Or run the helper script:
 
-### 4. Run the Application
+```bash
+./scripts/setup-local.sh
+```
+
+See `ENV_EXAMPLE.txt` for required variables (database, auth, Document AI, etc.). **Do not put API keys in this README or any tracked file.**
+
+### 3. Run the Application
 
 Development mode:
 ```bash

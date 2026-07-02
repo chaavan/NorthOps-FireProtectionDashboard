@@ -1,10 +1,10 @@
 {
-  "name": "job-pulling-dashboard",
+  "name": "northops-fire-protection-dashboard",
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "scripts\\dev.cmd",
-    "dev:network": "scripts\\dev.cmd",
+    "dev": "bash scripts/dev.sh",
+    "dev:win": "scripts\\dev.cmd",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "next lint",

@@ -9,6 +9,7 @@ import type {
   DocumentAiPage,
   DocumentAiToken,
 } from '@/lib/jobImportDocumentAi';
+import { normalizeJobLineQuantity } from '@/lib/quantityMath';
 
 export type TfMaterialParseIssue = {
   code: string;
@@ -68,7 +69,7 @@ function toNonNegativeInt(value: string | null | undefined): number {
   if (!text) return 0;
   const numeric = Number(text.replace(/[^\d.-]/g, ''));
   if (!Number.isFinite(numeric)) return 0;
-  return Math.max(0, Math.round(numeric));
+  return normalizeJobLineQuantity(numeric);
 }
 
 function isNumericToken(token: DocumentAiToken): boolean {

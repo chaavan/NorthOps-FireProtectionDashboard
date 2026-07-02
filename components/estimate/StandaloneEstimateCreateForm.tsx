@@ -7,6 +7,7 @@ import DashboardSidebar from "@/components/DashboardSidebar";
 import AccessDeniedOverlay from "@/components/AccessDeniedOverlay";
 import EstimateConfigurableSelect from "@/components/estimate/EstimateConfigurableSelect";
 import { usePermissions } from "@/lib/hooks/usePermissions";
+import { permissionLoadingFallback } from "@/lib/clientPermissionChecks";
 import EstimateConfidenceScale from "@/components/estimate/EstimateConfidenceScale";
 import { isEstimateTabEnabled } from "@/lib/featureFlags";
 import { SALES_TYPE_OPTIONS } from "@/lib/estimate/estimateMetadata";
@@ -37,15 +38,17 @@ function estimatorDisplayName(user: { name?: string | null; email?: string | nul
 export default function StandaloneEstimateCreateForm() {
   const router = useRouter();
   const { data: session, status } = useSession();
-  const { hasPermission, isLoading: permissionsLoading } = usePermissions();
+  const { hasPermission, isLoading: permissionsLoading, isSuperAdmin, isDeveloper } = usePermissions();
   const role = (session?.user as any)?.role as string | undefined;
+  const estimateLoadingFallback =
+    permissionLoadingFallback({ role, isSuperAdmin, isDeveloper }) ||
+    role === "ADMIN" ||
+    role === "SALES";
   const canAccess =
     isEstimateTabEnabled() &&
-    (permissionsLoading
-      ? role === "ADMIN" || role === "SALES"
-      : hasPermission("estimates.create"));
+    (permissionsLoading ? estimateLoadingFallback : hasPermission("estimates.create"));
   const canEditInfo = permissionsLoading
-    ? role === "ADMIN" || role === "SALES"
+    ? estimateLoadingFallback
     : hasPermission("estimates.edit_info");
   const [form, setForm] = useState({
     projectDate: todayDateInputValue(),

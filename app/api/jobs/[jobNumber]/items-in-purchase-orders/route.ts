@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions, isAdmin } from '@/lib/auth';
-import { hasPermission } from '@/lib/permissions';
+import { hasPermission, getEffectivePermissionsForSession } from '@/lib/permissions';
+import { bypassesJobAccessList } from '@/lib/jobScopedAccess';
 import { prisma } from '@/lib/prisma';
 import { canAccessJob, jobHasAccessRecords } from '@/lib/jobAccess';
 import { buildPoLineKey } from '@/lib/poLineKey';
@@ -52,8 +53,9 @@ export async function GET(
 
     const trimmedJobNumber = jobNumber.trim();
     const role = (session.user as any).role;
-    const isUserAdmin = isAdmin(role);
-    if (!isUserAdmin) {
+    const permissionDetails = await getEffectivePermissionsForSession(session);
+    const bypassJobAccess = bypassesJobAccessList(role, permissionDetails);
+    if (!bypassJobAccess) {
       const userEmail = (session.user as any)?.email;
       if (!userEmail) {
         return NextResponse.json(

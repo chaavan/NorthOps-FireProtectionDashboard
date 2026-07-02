@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { authOptions, isAdmin } from '@/lib/auth';
+import { authOptions } from '@/lib/auth';
 import { canAccessJob } from '@/lib/jobAccess';
+import { getEffectivePermissionsForSession } from '@/lib/permissions';
+import { bypassesJobAccessList } from '@/lib/jobScopedAccess';
 import { prisma } from '@/lib/prisma';
 import { getJobStockBackSummary } from '@/lib/jobStockBack';
 
@@ -25,8 +27,9 @@ export async function GET(
 
     const role = (session.user as any).role;
     const email = (session.user as any).email;
+    const permissionDetails = await getEffectivePermissionsForSession(session);
     const allowed =
-      isAdmin(role) ||
+      bypassesJobAccessList(role, permissionDetails) ||
       (email ? await canAccessJob(email, normalizedJobNumber) : false);
 
     if (!allowed) {

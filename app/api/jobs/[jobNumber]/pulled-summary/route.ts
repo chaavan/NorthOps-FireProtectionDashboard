@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { authOptions, isAdmin } from '@/lib/auth';
+import { authOptions } from '@/lib/auth';
+import { getEffectivePermissionsForSession } from '@/lib/permissions';
+import { bypassesJobAccessList } from '@/lib/jobScopedAccess';
 import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
@@ -30,7 +32,8 @@ export async function GET(
     }
 
     const role = (session.user as any).role;
-    if (!isAdmin(role)) {
+    const permissionDetails = await getEffectivePermissionsForSession(session);
+    if (!bypassesJobAccessList(role, permissionDetails)) {
       return NextResponse.json(
         { error: 'Forbidden - Admin access required' },
         { status: 403 }

@@ -7,7 +7,7 @@ import type {
   JobListResponse,
   LineItemUpdate,
 } from "./types";
-import { getRemainingQty } from "./quantityMath";
+import { getRemainingQty, MAX_JOB_LINE_QUANTITY, normalizeJobLineQuantity } from "./quantityMath";
 import { NO_PARTS_PLACEHOLDER_PART_NUMBER } from "./jobImportConstants";
 import { validatePreorderPullForJob } from "./jobPreorderLines";
 
@@ -43,10 +43,7 @@ function deriveDisplayNameFromEmail(email: string): string {
 }
 
 function normalizeNonNegativeQuantity(value: number | null | undefined): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return 0;
-  }
-  return Math.max(0, Math.trunc(value));
+  return normalizeJobLineQuantity(value);
 }
 
 function normalizeFabQuantity(
@@ -1164,6 +1161,17 @@ export async function createJobWithMerge(data: {
       item.quantityNeeded < 0
     ) {
       throw new Error("All line items must have quantityNeeded >= 0");
+    }
+    if (item.quantityNeeded > MAX_JOB_LINE_QUANTITY) {
+      throw new Error(
+        `Part ${item.partNumber.trim()} has quantityNeeded (${item.quantityNeeded.toLocaleString()}) above the allowed maximum (${MAX_JOB_LINE_QUANTITY.toLocaleString()}). Correct the quantity before saving.`,
+      );
+    }
+    const fab = item.quantityFab ?? 0;
+    if (fab > MAX_JOB_LINE_QUANTITY) {
+      throw new Error(
+        `Part ${item.partNumber.trim()} has quantityFab (${fab.toLocaleString()}) above the allowed maximum (${MAX_JOB_LINE_QUANTITY.toLocaleString()}). Correct the quantity before saving.`,
+      );
     }
   }
 

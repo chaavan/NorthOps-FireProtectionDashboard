@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions, isAdmin } from "@/lib/auth";
+import { authOptions, resolveSessionUserRole } from "@/lib/auth";
 import { getAccessibleListsForUser } from "@/lib/jobAccess";
+import { bypassesJobAccessList } from "@/lib/jobScopedAccess";
+import { getEffectivePermissionsForSession } from "@/lib/permissions";
 import { getJobListSummariesForJob } from "@/lib/jobsDatabase";
 
 export const dynamic = "force-dynamic";
@@ -38,11 +40,12 @@ export async function GET(
     }
 
     const role = (session.user as { role?: string }).role;
+    const permissionDetails = await getEffectivePermissionsForSession(session);
     const allLists = await getJobListSummariesForJob(jobNumber);
     const lists = await getAccessibleListsForUser({
       userEmail,
       jobNumber,
-      isAdmin: isAdmin(role),
+      bypassAccessList: bypassesJobAccessList(role, permissionDetails),
       allLists,
     });
 

@@ -303,12 +303,12 @@ export type AccessibleJobListSummary = {
 export async function getAccessibleListsForUser(params: {
   userEmail: string;
   jobNumber: string;
-  isAdmin: boolean;
+  bypassAccessList: boolean;
   allLists: AccessibleJobListSummary[];
 }): Promise<AccessibleJobListSummary[]> {
-  const { userEmail, jobNumber, isAdmin, allLists } = params;
+  const { userEmail, jobNumber, bypassAccessList, allLists } = params;
   if (!userEmail?.trim() || !jobNumber?.trim()) return [];
-  if (isAdmin) return allLists;
+  if (bypassAccessList) return allLists;
 
   const hasRecords = await jobHasAccessRecords(jobNumber);
   if (!hasRecords) return allLists;

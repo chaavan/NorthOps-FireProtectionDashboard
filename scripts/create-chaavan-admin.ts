@@ -1,6 +1,6 @@
 /**
- * Script to create chaavan as an admin user
- * Run with: npx ts-node scripts/create-chaavan-admin.ts
+ * Create or update the local admin/developer account from .env.
+ * Run with: npx tsx scripts/create-chaavan-admin.ts
  */
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
@@ -8,72 +8,70 @@ import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
-async function createChaavanAdmin() {
-  const email = 'surechaavanchidroop@gmail.com';
-  const password = 'CMD*5sure005';
-  const name = 'chaavan';
+async function createDeveloperAccount() {
+  const email = (process.env.ADMIN_EMAIL || 'surechaavanchidroop@gmail.com').trim().toLowerCase();
+  const password = process.env.ADMIN_PASSWORD || 'test1234';
+  const name = process.env.ADMIN_NAME || 'Chaavan';
 
   try {
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Check if user already exists
     const existingUser = await prisma.user.findUnique({
       where: { email },
     });
 
     if (existingUser) {
-      console.log(`⚠️  User with email ${email} already exists`);
-      console.log('Updating role to ADMIN and password...');
-      
       const updatedUser = await prisma.user.update({
         where: { email },
         data: {
-          role: 'ADMIN',
-          name: name,
+          role: 'DEVELOPER',
+          isDeveloper: true,
+          isSuperAdmin: false,
+          name,
           password: hashedPassword,
+          emailVerified: new Date(),
+          deactivatedAt: null,
         },
       });
-      
-      console.log('✅ User updated successfully!');
-      console.log('User details:', {
+
+      console.log('✅ Developer account updated');
+      console.log({
         id: updatedUser.id,
         email: updatedUser.email,
         name: updatedUser.name,
         role: updatedUser.role,
+        isDeveloper: updatedUser.isDeveloper,
       });
-      console.log('🔑 Password updated to: ' + password);
       return;
     }
 
-    // Create admin user
     const user = await prisma.user.create({
       data: {
         email,
         password: hashedPassword,
         name,
-        role: 'ADMIN',
+        role: 'DEVELOPER',
+        isDeveloper: true,
+        isSuperAdmin: false,
         emailVerified: new Date(),
       },
     });
 
-    console.log('✅ Admin user "chaavan" created successfully!');
-    console.log('📧 Email:', email);
-    console.log('🔑 Password:', password);
-    console.log('⚠️  Please change the password after first login!');
-    console.log('');
-    console.log('User details:', {
+    console.log('✅ Developer account created');
+    console.log({
       id: user.id,
       email: user.email,
       name: user.name,
       role: user.role,
+      isDeveloper: user.isDeveloper,
     });
+    console.log(`Sign in at ${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/login`);
   } catch (error) {
-    console.error('❌ Error creating admin user:', error);
+    console.error('❌ Error creating developer account:', error);
+    process.exitCode = 1;
   } finally {
     await prisma.$disconnect();
   }
 }
 
-createChaavanAdmin();
-
+createDeveloperAccount();
