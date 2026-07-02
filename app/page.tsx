@@ -3,6 +3,7 @@
 import { Suspense, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
+import { useHasMounted } from '@/lib/hooks/useHasMounted';
 import CalendarDashboard from '@/components/CalendarDashboard';
 import LocationPortal from '@/components/portal/LocationPortal';
 import AccessDeniedOverlay from '@/components/AccessDeniedOverlay';
@@ -18,6 +19,7 @@ import {
 
 function HomePageContent() {
   const router = useRouter();
+  const mounted = useHasMounted();
   const { data: session, status } = useSession();
   const {
     permissions,
@@ -35,40 +37,53 @@ function HomePageContent() {
   const fallbackRoute = getFirstAccessibleAppRoute(routeContext);
 
   const { isBootstrapping } = useAppBootstrap();
+  const portalEnabled = softwareConfig.portalEnabled;
 
   useEffect(() => {
-    if (isBootstrapping) return;
-    if (!softwareConfig.portalEnabled && !session) {
+    if (!mounted || status === 'loading') return;
+    if (!portalEnabled && !session) {
       router.replace('/login');
       return;
     }
-    if (!session) return;
+    if (isBootstrapping) return;
+    if (!portalEnabled && !session) return;
 
     if (!canViewCalendar && fallbackRoute && fallbackRoute !== '/') {
       router.replace(fallbackRoute);
     }
   }, [
+    mounted,
+    status,
     isBootstrapping,
     session,
     router,
     canViewCalendar,
     fallbackRoute,
+    portalEnabled,
   ]);
 
-  if (isBootstrapping) {
-    return <DashboardBootstrapShell message="Loading calendar..." />;
+  if (!mounted || (status === 'loading' && !portalEnabled)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-900 text-slate-400">
+        Loading...
+      </div>
+    );
   }
 
-  if (softwareConfig.portalEnabled && !session) {
-    return <LocationPortal />;
-  }
-
-  if (!softwareConfig.portalEnabled && !session) {
+  if (!portalEnabled && !session) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-900 text-slate-400">
         Redirecting to sign in...
       </div>
     );
+  }
+
+  if (isBootstrapping && portalEnabled) {
+    return <DashboardBootstrapShell message="Loading calendar..." />;
+  }
+
+  if (portalEnabled && !session) {
+    return <LocationPortal />;
   }
 
   if (!canViewCalendar) {

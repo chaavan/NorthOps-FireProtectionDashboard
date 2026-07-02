@@ -37,10 +37,12 @@ NEXT_PUBLIC_SOFTWARE_LOGO_URL=/northops-logo.png
 NEXT_PUBLIC_SOFTWARE_LOGO_ICON_URL=/northops-icon.png
 
 # Set to false on branch-only deployments that skip the location map portal.
-NEXT_PUBLIC_ENABLE_SOFTWARE_PORTAL=true
+# Defaults to false when NEXT_PUBLIC_SOFTWARE_ID=northops-fire.
+NEXT_PUBLIC_ENABLE_SOFTWARE_PORTAL=false
 
-# Set to false to hide /select and the classified location picker (login goes straight to sign-in).
-NEXT_PUBLIC_ENABLE_LOCATION_SELECT=true
+# Set to false to hide /select and go straight to /login (recommended for NorthOps).
+# Defaults to false when NEXT_PUBLIC_SOFTWARE_ID=northops-fire.
+NEXT_PUBLIC_ENABLE_LOCATION_SELECT=false
 
 # On branch deployments, link back to the portal from the login page (optional).
 # NEXT_PUBLIC_PORTAL_URL=https://portal.example.com

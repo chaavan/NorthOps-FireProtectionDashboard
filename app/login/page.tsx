@@ -12,6 +12,7 @@ import {
   sanitizeCallbackUrl,
   softwareConfig,
 } from '@/lib/softwareConfig';
+import { useHasMounted } from '@/lib/hooks/useHasMounted';
 import { LAST_LOCATION_KEY } from '@/lib/hooks/usePortalState';
 import { removeSurveyPopupDom } from '@/lib/survey/surveySnooze';
 
@@ -32,6 +33,7 @@ const modalCardClass =
 
 function LoginPageContent() {
   const router = useRouter();
+  const mounted = useHasMounted();
   const { status: sessionStatus } = useSession();
   const [callbackUrl, setCallbackUrl] = useState('/');
   const locationSelectUrl = getLocationSelectUrl(callbackUrl);
@@ -51,6 +53,12 @@ function LoginPageContent() {
 
   const [showContactModal, setShowContactModal] = useState(false);
   const [isPortalGateReady, setIsPortalGateReady] = useState(!needsLocationGate);
+  const [sessionTimedOut, setSessionTimedOut] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSessionTimedOut(true), 3000);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const raw = new URLSearchParams(window.location.search).get('callbackUrl');
@@ -70,12 +78,14 @@ function LoginPageContent() {
   }, []);
 
   useEffect(() => {
+    if (!mounted) return;
+
     if (!needsLocationGate) {
       setIsPortalGateReady(true);
       return;
     }
 
-    if (sessionStatus === 'loading') return;
+    if (sessionStatus === 'loading' && !sessionTimedOut) return;
 
     if (sessionStatus === 'authenticated') {
       setIsPortalGateReady(true);
@@ -97,7 +107,7 @@ function LoginPageContent() {
     }
 
     setIsPortalGateReady(true);
-  }, [locationSelectUrl, router, sessionStatus]);
+  }, [locationSelectUrl, mounted, router, sessionStatus, sessionTimedOut]);
 
   useEffect(() => {
     if (sessionStatus !== 'authenticated') return;
@@ -212,7 +222,16 @@ function LoginPageContent() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [showResetModal, showContactModal]);
 
-  if (needsLocationGate && (sessionStatus === 'loading' || !isPortalGateReady)) {
+  if (!mounted) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-400">
+        Loading...
+      </div>
+    );
+  }
+
+  const waitingOnSession = sessionStatus === 'loading' && !sessionTimedOut;
+  if (needsLocationGate && (waitingOnSession || !isPortalGateReady)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-400">
         Loading...

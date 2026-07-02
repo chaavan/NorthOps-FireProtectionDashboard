@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import { apiRateLimiter, authRateLimiter, writeRateLimiter, getClientIdentifier } from '@/lib/rateLimit';
+import { softwareConfig } from '@/lib/softwareConfig';
 
 // Rate limiting configuration per route
 const rateLimitConfig: Record<string, { limiter: typeof apiRateLimiter; path: string }> = {
@@ -85,10 +86,8 @@ export async function proxy(request: NextRequest) {
 
   // Apply NextAuth session checks for protected routes
   const isAuthRoute = pathname.startsWith('/api/auth');
-  const portalEnabled =
-    process.env.NEXT_PUBLIC_ENABLE_SOFTWARE_PORTAL !== 'false';
-  const locationSelectEnabled =
-    process.env.NEXT_PUBLIC_ENABLE_LOCATION_SELECT !== 'false';
+  const portalEnabled = softwareConfig.portalEnabled;
+  const locationSelectEnabled = softwareConfig.locationSelectEnabled;
 
   if (pathname.startsWith('/select') && !locationSelectEnabled) {
     const loginUrl = new URL('/login', request.url);

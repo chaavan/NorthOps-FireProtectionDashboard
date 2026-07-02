@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import LocationMap from "@/components/portal/LocationMap";
 import LocationPanel from "@/components/portal/LocationPanel";
@@ -32,6 +32,20 @@ function buildLoginUrl(location: LocationEntry, callbackUrl: string | null) {
 }
 
 export default function LocationPortal() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-400">
+          Loading map...
+        </div>
+      }
+    >
+      <LocationPortalContent />
+    </Suspense>
+  );
+}
+
+function LocationPortalContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const portalState = usePortalState();

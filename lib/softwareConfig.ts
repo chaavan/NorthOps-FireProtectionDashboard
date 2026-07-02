@@ -21,14 +21,18 @@ function envBool(key: string, fallback = false): boolean {
   return value === "true";
 }
 
+const softwareId = env("NEXT_PUBLIC_SOFTWARE_ID", "northops-fire");
+/** Branch deployments (e.g. northops-fire) skip the map portal unless explicitly enabled. */
+const portalDefault = softwareId === "northops-fire" ? false : true;
+
 export const softwareConfig: SoftwareConfig = {
-  id: env("NEXT_PUBLIC_SOFTWARE_ID", "northops-fire"),
+  id: softwareId,
   name: env("NEXT_PUBLIC_SOFTWARE_NAME", "Fire Protection"),
   tagline: env("NEXT_PUBLIC_SOFTWARE_TAGLINE", "Operational Dashboard"),
   logoUrl: env("NEXT_PUBLIC_SOFTWARE_LOGO_URL", "/northops-logo.png"),
   logoIconUrl: env("NEXT_PUBLIC_SOFTWARE_LOGO_ICON_URL", "/northops-icon.png"),
-  portalEnabled: envBool("NEXT_PUBLIC_ENABLE_SOFTWARE_PORTAL", true),
-  locationSelectEnabled: envBool("NEXT_PUBLIC_ENABLE_LOCATION_SELECT", true),
+  portalEnabled: envBool("NEXT_PUBLIC_ENABLE_SOFTWARE_PORTAL", portalDefault),
+  locationSelectEnabled: envBool("NEXT_PUBLIC_ENABLE_LOCATION_SELECT", portalDefault),
   portalUrl: process.env.NEXT_PUBLIC_PORTAL_URL?.trim() || null,
   rolePermissionManagementEnabled: envBool("NEXT_PUBLIC_ENABLE_ROLE_PERMISSION_MANAGEMENT", true),
 };

@@ -22,6 +22,7 @@
     "check:inventory-writes": "tsx scripts/inventory-write-guard.ts",
     "check:part-cost-writes": "tsx scripts/part-cost-write-guard.ts",
     "check:part-info-writes": "tsx scripts/part-info-write-guard.ts",
+    "check:secrets": "bash scripts/check-tracked-secrets.sh",
     "test:vendor-price": "tsc -p scripts/tsconfig.test.json && node scripts/run-vendor-price-tests.cjs",
     "test:permissions": "tsx scripts/test-permission-defaults.ts && tsx scripts/test-permission-resolution.ts && tsx scripts/test-user-permission-scoping.ts && tsx scripts/test-job-permission-scoping.ts",
     "db:import-parts": "tsx scripts/import-parts.ts",

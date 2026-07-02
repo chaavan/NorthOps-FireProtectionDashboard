@@ -211,10 +211,10 @@ Updates multiple line items in batch.
 
 1. Push your code to GitHub
 2. Connect your repository to Vercel
-3. Add environment variable in Vercel dashboard:
-   - Key: `GOOGLE_SERVICE_ACCOUNT_JSON`
-   - Value: Your service account JSON (single line)
+3. Add environment variables from `ENV_EXAMPLE.txt` in the Vercel dashboard (never commit real secrets)
 4. Deploy
+
+**Secrets:** Do not put API keys in README or other tracked files. Use `.env.local` locally and Vercel env vars in production. If a key was ever committed, rotate it in the provider console and run `bash scripts/purge-secrets-from-history.sh` before force-pushing.
 
 ### Multi-software / multi-branch deployments
 
@@ -255,27 +255,25 @@ This is a standard Next.js application and can be deployed to any platform that 
 
 ## 🔒 Security Considerations
 
-- Service account credentials are stored as environment variables (never commit to git)
-- All Google Sheets API calls are made server-side only
-- The service account should have minimal permissions (Editor access to the specific sheet only)
-- Consider implementing authentication if deploying to public internet
+- Store secrets in `.env.local` (gitignored) and in your host's environment variable UI — never commit them
+- Run `npm run check:secrets` before pushing to catch accidental key commits
+- Document AI and other cloud credentials are server-side only
+- If a key was ever committed, **rotate it immediately** and purge git history (`scripts/purge-secrets-from-history.sh`)
+- Restrict public client tokens (e.g. Mapbox `pk...`) to your deployed domains in the provider dashboard
 
 ## 🐛 Troubleshooting
 
-### "Failed to read from Google Sheets"
-- Verify the Google Sheet is shared with the service account email
-- Check that Google Sheets API is enabled in your Google Cloud project
-- Ensure the `GOOGLE_SERVICE_ACCOUNT_JSON` environment variable is set correctly
+### Database / Prisma migrate errors on deploy
+- **P3005** (schema not empty): baseline once with `BASELINE_CONFIRM=1 npm run db:baseline`
+- See `ENV_EXAMPLE.txt` and `scripts/vercel-build.sh`
 
-### "Invalid Credentials"
-- The JSON in `.env.local` must be on a single line (no newlines)
-- Verify the JSON is valid (use a JSON validator)
-- Make sure you're using the correct environment file for your deployment environment
+### Document AI / PDF import failures
+- Verify `GOOGLE_DOCUMENT_AI_*` variables in `ENV_EXAMPLE.txt`
+- Service account needs the Document AI API User role
 
-### "No line items found"
-- Verify the sheet name is exactly "Job Tracker"
-- Check that the data starts at row 2 (row 1 should be headers)
-- Ensure job numbers in the sheet match what you're searching for
+### Authentication issues
+- `NEXTAUTH_URL` must match the URL users open in the browser
+- Generate a strong `NEXTAUTH_SECRET` (`openssl rand -base64 32`)
 
 ## 📝 Development
 
