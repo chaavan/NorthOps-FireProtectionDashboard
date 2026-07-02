@@ -90,6 +90,10 @@ SMARTSHEET_ID=your-smartsheet-sheet-id
 # ===== AUTHENTICATION (Required) =====
 # PostgreSQL Database Connection
 DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=public"
+# Vercel builds run `prisma migrate deploy`. If deploy fails with P3005 (schema not empty),
+# baseline once against production (fast, ~seconds):
+#   BASELINE_CONFIRM=1 npm run db:baseline
+# Use the direct Neon URL (no -pooler) if you see advisory-lock timeouts.
 
 # NextAuth Configuration
 NEXTAUTH_URL="http://localhost:3000"

@@ -20,6 +20,8 @@ echo "Set production env vars in Vercel (or pull from .env.local):"
 echo "  vercel env pull .env.vercel.local"
 echo
 echo "Required: DATABASE_URL, NEXTAUTH_SECRET, NEXTAUTH_URL"
+echo "If Vercel build fails with Prisma P3005, baseline production once:"
+echo "  BASELINE_CONFIRM=1 DATABASE_URL=<prod-url> bash scripts/baseline-migrations.sh"
 echo "Recommended: OPENAI_API_KEY, GOOGLE_DOCUMENT_AI_*, CLOUDFLARE_R2_*, NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN"
 echo
 

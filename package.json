@@ -13,6 +13,7 @@
     "db:push": "tsx scripts/repair-inventory-movement-actors.ts && prisma db push",
     "db:studio": "prisma studio",
     "db:migrate": "prisma migrate deploy",
+    "db:baseline": "tsx scripts/baseline-migrations-fast.ts",
     "db:seed-permissions": "tsx scripts/seed-role-permissions.ts",
     "test:job-import": "tsx scripts/test-job-import-reliability.ts",
     "test:job-import-chunks": "tsx scripts/test-job-import-chunks.ts",

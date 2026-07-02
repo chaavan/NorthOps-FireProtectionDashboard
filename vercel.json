@@ -1,5 +1,5 @@
 {
-  "buildCommand": "prisma generate && prisma migrate deploy && next build --webpack",
+  "buildCommand": "bash scripts/vercel-build.sh",
   "framework": "nextjs",
   "installCommand": "npm install"
 }
