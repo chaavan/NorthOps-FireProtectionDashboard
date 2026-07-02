@@ -1,0 +1,1085 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  password      String
+  role          String    @default("VIEWER")
+  isSuperAdmin  Boolean   @default(false) @map("is_super_admin")
+  isDeveloper   Boolean   @default(false) @map("is_developer")
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deactivatedAt DateTime? @map("deactivated_at")
+  accounts      Account[]
+  sessions      Session[]
+  inventoryMovementsAsActor InventoryMovement[]
+  partCostChangesAsActor    PartCostChange[]
+  partInfoChangesAsActor    PartInfoChange[]
+  jobStockReturnsAsActor    JobStockReturn[]
+  jobStockReturnsReversed   JobStockReturn[] @relation("StockReturnReversedBy")
+  jobStockReturnsDeleted    JobStockReturn[] @relation("StockReturnDeletedBy")
+  surveyResponses           SurveyResponse[]
+  vendorPriceImportsCreated VendorPriceImport[] @relation("VendorPriceImportCreatedBy")
+  vendorPriceImportsCommitted VendorPriceImport[] @relation("VendorPriceImportCommittedBy")
+  permissionOverrides       PermissionOverride[] @relation("PermissionOverrideUser")
+  permissionOverridesChanged PermissionOverride[] @relation("PermissionOverrideChangedBy")
+  permissionAuditLogsAsActor PermissionAuditLog[] @relation("PermissionAuditLogActor")
+  permissionAuditLogsAsTarget PermissionAuditLog[] @relation("PermissionAuditLogTarget")
+  jobPermissionOverridesChanged JobPermissionOverride[] @relation("JobPermissionOverrideChangedBy")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+enum UserRole {
+  ADMIN
+  PROJECT_MANAGER
+  DESIGNER
+  SALES
+  EDITOR
+  VIEWER
+}
+
+enum PermissionEffect {
+  ALLOW
+  DENY
+}
+
+model DashboardRole {
+  key             String   @id
+  name            String
+  description     String?  @db.Text
+  colorClass      String?  @map("color_class")
+  isSystem        Boolean  @default(false) @map("is_system")
+  isActive        Boolean  @default(true) @map("is_active")
+  sortOrder       Int      @default(100) @map("sort_order")
+  createdByUserId String?  @map("created_by_user_id")
+  updatedByUserId String?  @map("updated_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive])
+  @@index([sortOrder])
+  @@map("roles")
+}
+
+model Part {
+  id                   String   @id @default(cuid())
+  company              Int
+  pn                   String // Part Number
+  whse                 Int
+  nomenclature         String   @db.Text
+  cost                 Decimal  @db.Decimal(10, 2)
+  type                 Int
+  weight               Decimal? @db.Decimal(10, 2)
+  units                String
+  altPN                String?
+  code                 String?
+  vendor               String?
+  dateUpdated          String?  @map("date_updated")
+  vendorPartID         String?  @map("vendor_part_id")
+  costChangePercentage String?  @map("cost_change_percentage")
+  status               String?
+  quantity             BigInt?  @default(0) // Inventory quantity from Excel
+  reorderPoint         Int?     @map("reorder_point") // Minimum on hand for reorder alerts
+  orderMinimum         Int?     @map("order_minimum") // Standard reorder quantity when below minimum
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  // Relations
+  inventoryMovements InventoryMovement[]
+  partAllocations    PartAllocation[]
+  partCostChanges    PartCostChange[]
+  partInfoChanges    PartInfoChange[]
+  jobStockReturnLines JobStockReturnLine[]
+  vendorPriceImportLines VendorPriceImportLine[]
+
+  @@index([pn])
+  @@index([company])
+  @@index([vendor])
+  @@index([vendorPartID])
+  @@index([vendor, vendorPartID])
+  @@map("parts")
+}
+
+model InventoryMovement {
+  id             String       @id @default(cuid())
+  partId         String       @map("part_id")
+  actorUserId    String?      @map("actor_user_id")
+  type           MovementType
+  quantityDelta  Int          @map("quantity_delta") // negative for PULL, positive for UNPULL
+  quantityBefore BigInt       @map("quantity_before")
+  quantityAfter  BigInt       @map("quantity_after")
+  contextType    String?      @map("context_type") // e.g. "JOB", "RETURN", "ADJUSTMENT"
+  contextId      String?      @map("context_id") // e.g. jobId or ticketId
+  note           String?      @db.Text
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  part  Part  @relation(fields: [partId], references: [id], onDelete: Cascade)
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([partId])
+  @@index([actorUserId])
+  @@index([contextType, contextId])
+  @@index([createdAt])
+  @@map("inventory_movements")
+}
+
+model PartCostChange {
+  id           String   @id @default(cuid())
+  partId       String   @map("part_id")
+  actorUserId  String?  @map("actor_user_id")
+  costBefore   Decimal? @map("cost_before") @db.Decimal(10, 2)
+  costAfter    Decimal  @map("cost_after") @db.Decimal(10, 2)
+  contextType  String   @map("context_type")
+  contextId    String?  @map("context_id")
+  note         String?  @db.Text
+  metadata     Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  part  Part  @relation(fields: [partId], references: [id], onDelete: Cascade)
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([partId, createdAt(sort: Desc)])
+  @@index([contextType, contextId])
+  @@index([createdAt])
+  @@map("part_cost_changes")
+}
+
+model PartInfoChange {
+  id          String   @id @default(cuid())
+  partId      String   @map("part_id")
+  actorUserId String?  @map("actor_user_id")
+  contextType String   @map("context_type")
+  contextId   String?  @map("context_id")
+  changes     Json
+  note        String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  part  Part  @relation(fields: [partId], references: [id], onDelete: Cascade)
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([partId, createdAt(sort: Desc)])
+  @@index([contextType, contextId])
+  @@index([createdAt])
+  @@map("part_info_changes")
+}
+
+enum MovementType {
+  PULL
+  UNPULL
+  ADJUSTMENT
+}
+
+enum JobStockReturnStatus {
+  ACTIVE
+  REVERSED
+  DELETED
+}
+
+enum JobImportStatus {
+  PROCESSING
+  READY
+  FAILED
+  COMMITTED
+}
+
+enum JobImportMode {
+  NEW_JOB_IMPORT
+  EXISTING_JOB_UPDATE
+}
+
+enum EstimateStatus {
+  DRAFT
+  ACTIVE
+}
+
+enum SurveyStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+}
+
+enum SurveyResponseStatus {
+  INCOMPLETE
+  COMPLETE
+}
+
+model PartAllocation {
+  id             String   @id @default(cuid())
+  partId         String   @map("part_id")
+  jobId          String   @map("job_id")
+  quantityPulled Int      @default(0) @map("quantity_pulled")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  part Part @relation(fields: [partId], references: [id], onDelete: Cascade)
+
+  @@unique([partId, jobId])
+  @@index([partId])
+  @@index([jobId])
+  @@map("part_allocations")
+}
+
+model Job {
+  jobNumber                 String    @map("job_number")
+  jobName                   String    @map("job_name")
+  contractNumber            String?   @map("contract_number")
+  listNumber                String    @default("1") @map("list_number")
+  area                      String?
+  locationShipTo            String?   @map("location_ship_to")
+  stocklistDeliveryShipDate DateTime? @map("stocklist_delivery_ship_date")
+  listedBy                  String?   @map("listed_by")
+  deliveryDate              DateTime  @map("delivery_date")
+  unitOfMeasurement         String?   @map("unit_of_measurement")
+  pulled                    Int       @default(0)
+  quantityNeeded            Int       @map("quantity_needed")
+  quantityFab               Int       @default(0) @map("quantity_fab")
+  quantityOrdered           Int?      @map("quantity_ordered")
+  manualCost                Decimal?  @db.Decimal(10, 2) @map("manual_cost")
+  quantityReceivedFromOrder Int       @default(0) @map("quantity_received_from_order")
+  quantityPulledFromPreorder Int      @default(0) @map("quantity_pulled_from_preorder")
+  pulledBy                  String?   @map("pulled_by")
+  pulledDate                DateTime? @map("pulled_date")
+  description               String?   @db.Text
+  ordered                   Boolean?  @default(false)
+  receivedFromOrder         Boolean?  @default(false) @map("received_from_order")
+  pickupFromSupplier        Boolean?  @default(false) @map("pickup_from_supplier")
+  supplierDeliveryToJobsite Boolean?  @default(false) @map("supplier_delivery_to_jobsite")
+  delivered                 Boolean?  @default(false)
+  purchaseOrderAccountedFor Boolean   @default(false) @map("purchase_order_accounted_for")
+  lineOrder                 Int?      @map("line_order")
+  manualLineOrderLocked     Boolean   @default(false) @map("manual_line_order_locked")
+  partNumber                String    @map("part_number")
+  type                      String?
+  partType                  String?   @map("part_type")
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+  creatorTimezone           String?   @map("creator_timezone")
+
+  @@id([jobNumber, listNumber, partNumber])
+  @@index([jobNumber])
+  @@index([partNumber])
+  @@index([jobName])
+  @@index([stocklistDeliveryShipDate])
+  @@index([deliveryDate])
+  @@index([jobNumber, listNumber])
+  @@index([jobNumber, listNumber, lineOrder])
+  @@map("jobs")
+}
+
+model JobStockReturn {
+  id               String               @id @default(cuid())
+  jobNumber        String               @map("job_number")
+  actorUserId      String               @map("actor_user_id")
+  note             String?              @db.Text
+  pdfDocument      Json?                @map("pdf_document")
+  status           JobStockReturnStatus @default(ACTIVE)
+  reversedAt       DateTime?            @map("reversed_at")
+  reversedByUserId String?              @map("reversed_by_user_id")
+  reverseReason    String?              @map("reverse_reason") @db.Text
+  deletedAt        DateTime?            @map("deleted_at")
+  deletedByUserId  String?              @map("deleted_by_user_id")
+  deleteReason     String?              @map("delete_reason") @db.Text
+  createdAt        DateTime             @default(now()) @map("created_at")
+
+  actor      User                 @relation(fields: [actorUserId], references: [id])
+  reversedBy User?                @relation("StockReturnReversedBy", fields: [reversedByUserId], references: [id])
+  deletedBy  User?                @relation("StockReturnDeletedBy", fields: [deletedByUserId], references: [id])
+  lines      JobStockReturnLine[]
+
+  @@index([jobNumber])
+  @@index([jobNumber, status])
+  @@index([actorUserId])
+  @@index([createdAt])
+  @@map("job_stock_returns")
+}
+
+model JobStockReturnLine {
+  id                     String @id @default(cuid())
+  jobStockReturnId       String @map("job_stock_return_id")
+  /// Denormalized copy of parent job number (required by legacy DB column + line queries).
+  jobNumber              String @map("job_number")
+  partId                 String @map("part_id")
+  partNumber             String @map("part_number")
+  returnedQuantity       Int    @map("returned_quantity")
+  sentShopQuantity       Int    @default(0) @map("sent_shop_quantity")
+  sentVendorQuantity     Int    @default(0) @map("sent_vendor_quantity")
+
+  jobStockReturn JobStockReturn @relation(fields: [jobStockReturnId], references: [id], onDelete: Cascade)
+  part           Part           @relation(fields: [partId], references: [id], onDelete: Restrict)
+
+  @@index([jobStockReturnId])
+  @@index([jobNumber])
+  @@index([partId])
+  @@index([partNumber])
+  @@map("job_stock_return_lines")
+}
+
+model Delivery {
+  id        String    @id @default(cuid())
+  jobNumber String    @map("job_number")
+  listNumber String   @default("1") @map("list_number")
+  jobArea   String?   @map("job_area")
+  jobName   String?   @map("job_name")
+  date      DateTime? @map("date")
+  address   String?   @db.Text
+  isServiceJob Boolean @default(false) @map("is_service_job")
+
+  // Parts checkboxes
+  fabPipes     Boolean @default(false) @map("fab_pipes")
+  loosePipes   Boolean @default(false) @map("loose_pipes")
+  thdFittings  Boolean @default(false) @map("thd_fittings")
+  nipples      Boolean @default(false)
+  grvdFittings Boolean @default(false) @map("grvd_fittings")
+  valves       Boolean @default(false)
+  heads        Boolean @default(false)
+  hangers      Boolean @default(false)
+  rodStrut     Boolean @default(false) @map("rod_strut")
+  flexDrops    Boolean @default(false) @map("flex_drops")
+  cpvcPipes    Boolean @default(false) @map("cpvc_pipes")
+  cpvcFittings Boolean @default(false) @map("cpvc_fittings")
+  quickDrops   Boolean @default(false) @map("quick_drops")
+  pipeStand    Boolean @default(false) @map("pipe_stand")
+  compressor   Boolean @default(false)
+  backflow     Boolean @default(false)
+  signs        Boolean @default(false)
+  other        Boolean @default(false)
+
+  // Location (DEPRECATED - kept for backward compatibility, use locations relation instead)
+  location       String? @db.Text
+  locationRow    String? @map("location_row")
+  locationColumn String? @map("location_column")
+
+  // Multiple locations relation
+  locations DeliveryLocation[]
+
+  // Pickup locations
+  pickupGalloup Boolean @default(false) @map("pickup_galloup")
+  pickupEtna    Boolean @default(false) @map("pickup_etna")
+  pickupViking  Boolean @default(false) @map("pickup_viking")
+  pickupOther   String? @map("pickup_other")
+
+  // Delivery locations
+  deliveryGalloup Boolean @default(false) @map("delivery_galloup")
+  deliveryEtna    Boolean @default(false) @map("delivery_etna")
+  deliveryViking  Boolean @default(false) @map("delivery_viking")
+  deliveryOther   String? @map("delivery_other")
+
+  // Personnel
+  fitterPickingUpMaterial Boolean   @default(false) @map("fitter_picking_up_material")
+  picker                  String?
+  pickerDate              DateTime? @map("picker_date")
+  receiver                String?
+  receiverDate            DateTime? @map("receiver_date")
+  additionalReceiverDates Json?     @map("additional_receiver_dates")
+  loaderDriver            String?   @map("loader_driver")
+  fitter                  String?
+  materialDate            DateTime? @map("material_date")
+  notes                   String?   @db.Text
+
+  // Backorders - Ordered
+  backordersEtnaOrdered     Boolean @default(false) @map("backorders_etna_ordered")
+  backordersGalloupOrdered  Boolean @default(false) @map("backorders_galloup_ordered")
+  backordersVikingOrdered   Boolean @default(false) @map("backorders_viking_ordered")
+  backordersCoreMainOrdered Boolean @default(false) @map("backorders_coremain_ordered")
+  backordersOtherOrdered    Boolean @default(false) @map("backorders_other_ordered")
+
+  // Backorders - Partial
+  backordersEtnaPartial     Boolean @default(false) @map("backorders_etna_partial")
+  backordersGalloupPartial  Boolean @default(false) @map("backorders_galloup_partial")
+  backordersVikingPartial   Boolean @default(false) @map("backorders_viking_partial")
+  backordersCoreMainPartial Boolean @default(false) @map("backorders_coremain_partial")
+  backordersOtherPartial   Boolean @default(false) @map("backorders_other_partial")
+
+  // Backorders - Received
+  backordersEtnaReceived     Boolean @default(false) @map("backorders_etna_received")
+  backordersGalloupReceived  Boolean @default(false) @map("backorders_galloup_received")
+  backordersVikingReceived   Boolean @default(false) @map("backorders_viking_received")
+  backordersCoreMainReceived Boolean @default(false) @map("backorders_coremain_received")
+  backordersOtherReceived   Boolean @default(false) @map("backorders_other_received")
+  backordersOtherName       String?  @map("backorders_other_name")
+
+  // Material status
+  fromShopComplete       Boolean @default(false) @map("from_shop_complete")
+  fromShopStillNeed      Boolean @default(false) @map("from_shop_still_need")
+  fromShopNa             Boolean @default(false) @map("from_shop_na")
+  fromSuppliersComplete  Boolean @default(false) @map("from_suppliers_complete")
+  fromSuppliersStillNeed Boolean @default(false) @map("from_suppliers_still_need")
+  fromSuppliersNa        Boolean @default(false) @map("from_suppliers_na")
+
+  // Partial delivery (note + timestamp when user records partial delivery)
+  partialDeliveryNote      String?   @db.Text @map("partial_delivery_note")
+  partialDeliveryRecordedAt DateTime? @map("partial_delivery_recorded_at")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([jobNumber, listNumber])
+  @@index([jobNumber])
+  @@index([jobNumber, listNumber])
+  @@index([date])
+  @@map("deliveries")
+}
+
+model PackingSlipAttachment {
+  id          String   @id @default(cuid())
+  jobNumber   String   @map("job_number")
+  listNumber  String   @default("1") @map("list_number")
+  fileName    String   @map("file_name")
+  storageKey  String   @map("storage_key")
+  contentType String?  @map("content_type")
+  size        Int?     @map("size")
+  uploadedBy  String   @map("uploaded_by")
+  uploadedAt  DateTime @default(now()) @map("uploaded_at")
+
+  @@index([jobNumber, listNumber])
+  @@map("packing_slips")
+}
+
+model CalendarEvent {
+  id        String   @id @default(cuid())
+  title     String
+  date      DateTime
+  notes     String?  @db.Text
+  createdBy String?  @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([date])
+  @@map("calendar_events")
+}
+
+model Survey {
+  id             String       @id @default(cuid())
+  version        Int
+  title          String
+  tagline        String?
+  prefaceHeading String?      @map("preface_heading")
+  prefaceMessage String?      @map("preface_message") @db.Text
+  status         SurveyStatus @default(DRAFT)
+  questions      Json
+  createdBy      String?      @map("created_by")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  closedAt       DateTime?    @map("closed_at")
+
+  responses SurveyResponse[]
+
+  @@unique([version])
+  @@index([status])
+  @@index([createdAt])
+  @@map("surveys")
+}
+
+model SurveyResponse {
+  id          String               @id @default(cuid())
+  surveyId    String               @map("survey_id")
+  userId      String               @map("user_id")
+  userEmail   String               @map("user_email")
+  userName    String?              @map("user_name")
+  department  String?
+  answers     Json
+  progress    Json?
+  status      SurveyResponseStatus @default(INCOMPLETE)
+  submittedAt DateTime?            @map("submitted_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
+
+  survey Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([surveyId, userId])
+  @@index([surveyId])
+  @@index([userId])
+  @@index([userEmail])
+  @@index([status])
+  @@index([submittedAt])
+  @@index([updatedAt])
+  @@map("survey_responses")
+}
+
+model DeliveryLocation {
+  id         String @id @default(cuid())
+  deliveryId String @map("delivery_id")
+  
+  // Location fields
+  locationType String? @map("location_type") @db.Text // Type/Box field
+  row          String?
+  column       String?
+  
+  // Order for display
+  order Int @default(0)
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  delivery Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  
+  @@index([deliveryId])
+  @@map("delivery_locations")
+}
+
+model JobNote {
+  id        String   @id @default(cuid())
+  jobNumber String   @map("job_number")
+  listNumber String  @default("1") @map("list_number")
+  content   String   @db.Text
+  createdBy String?  @map("created_by")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  parentId  String?  @map("parent_id")
+  noteKind  String?  @map("note_kind")
+  deliveryDateFrom DateTime? @map("delivery_date_from")
+  deliveryDateTo   DateTime? @map("delivery_date_to")
+
+  parent    JobNote?   @relation("NoteReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   JobNote[]  @relation("NoteReplies")
+  attachments JobNoteAttachment[]
+
+  @@index([jobNumber])
+  @@index([jobNumber, listNumber])
+  @@index([createdAt])
+  @@index([parentId])
+  @@map("job_notes")
+}
+
+model JobNoteAttachment {
+  id          String   @id @default(cuid())
+  noteId      String   @map("note_id")
+  jobNumber   String   @map("job_number")
+  listNumber  String   @default("1") @map("list_number")
+  r2Key       String   @unique @map("r2_key")
+  contentType String   @map("content_type")
+  sizeBytes   Int      @map("size_bytes")
+  width       Int?
+  height      Int?
+  fileName    String?  @map("file_name")
+  createdBy   String?  @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  note JobNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([noteId])
+  @@index([jobNumber])
+  @@index([jobNumber, listNumber])
+  @@index([createdAt])
+  @@map("job_note_attachments")
+}
+
+model JobNotification {
+  id             String   @id @default(cuid())
+  jobNumber      String   @map("job_number")
+  noteId         String?  @map("note_id")
+  recipientEmail String?  @map("recipient_email")
+  type           String // "note" or "comment"
+  sentAt         DateTime @default(now()) @map("sent_at")
+  status         String   @default("sent") // "sent", "failed", "pending"
+  error          String?  @db.Text
+
+  @@index([jobNumber])
+  @@index([sentAt])
+  @@map("job_notifications")
+}
+
+model PasswordResetRequest {
+  id             String   @id @default(cuid())
+  email          String
+  hashedPassword String   @map("hashed_password")
+  status         String   @default("pending") // pending, approved, rejected
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([email])
+  @@index([status])
+  @@map("password_reset_requests")
+}
+
+model RolePermissionTemplate {
+  id            String           @id @default(cuid())
+  role          String
+  permissionKey String           @map("permission_key")
+  effect        PermissionEffect
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  @@unique([role, permissionKey])
+  @@index([role])
+  @@index([permissionKey])
+  @@map("role_permission_templates")
+}
+
+model PermissionOverride {
+  id              String           @id @default(cuid())
+  userId          String           @map("user_id")
+  permissionKey   String           @map("permission_key")
+  effect          PermissionEffect
+  changedByUserId String?          @map("changed_by_user_id")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  user      User  @relation("PermissionOverrideUser", fields: [userId], references: [id], onDelete: Cascade)
+  changedBy User? @relation("PermissionOverrideChangedBy", fields: [changedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, permissionKey])
+  @@index([userId])
+  @@index([permissionKey])
+  @@index([changedByUserId])
+  @@map("permission_overrides")
+}
+
+model PermissionAuditLog {
+  id            String   @id @default(cuid())
+  actorUserId   String?  @map("actor_user_id")
+  targetUserId  String?  @map("target_user_id")
+  action        String
+  permissionKey String?  @map("permission_key")
+  before        Json?
+  after         Json?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  actor  User? @relation("PermissionAuditLogActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  target User? @relation("PermissionAuditLogTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId])
+  @@index([targetUserId])
+  @@index([permissionKey])
+  @@index([createdAt])
+  @@map("permission_audit_logs")
+}
+
+model JobAccess {
+  id          String         @id @default(cuid())
+  jobNumber   String         @map("job_number")
+  listNumber  String         @default("1") @map("list_number")
+  userEmail   String         @map("user_email")
+  source      String         @default("MANUAL")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  @@unique([jobNumber, listNumber, userEmail])
+  @@index([jobNumber])
+  @@index([jobNumber, listNumber])
+  @@index([userEmail])
+  @@index([source])
+  @@map("job_access")
+}
+
+model JobPermissionOverride {
+  id              String           @id @default(cuid())
+  jobNumber       String           @map("job_number")
+  listNumber      String           @default("1") @map("list_number")
+  userEmail       String           @map("user_email")
+  permissionKey   String           @map("permission_key")
+  effect          PermissionEffect
+  changedByUserId String?          @map("changed_by_user_id")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  changedBy User? @relation("JobPermissionOverrideChangedBy", fields: [changedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([jobNumber, listNumber, userEmail, permissionKey])
+  @@index([jobNumber, listNumber])
+  @@index([userEmail])
+  @@map("job_permission_overrides")
+}
+
+model PurchaseOrder {
+  id          String   @id @default(cuid())
+  orderNumber String   @unique @map("order_number")
+  vendorPoLabel String? @map("vendor_po_label")
+  items       Json // Array of {jobNumber, jobName, partNumber, description, quantityOrdered, vendor}
+  sentBy      String   @map("sent_by")
+  sentAt      DateTime @default(now()) @map("sent_at")
+  supplier    String?
+  orderKind   String   @default("JOB") @map("order_kind")
+  recipientTo Json?    @map("recipient_to")
+  recipientCc Json?    @map("recipient_cc")
+  sendStatus  String   @default("SENT") @map("send_status")
+  sendError   String?  @map("send_error")
+  batchId     String?  @map("batch_id")
+
+  @@index([sentAt])
+  @@index([batchId])
+  @@index([supplier])
+  @@index([orderKind])
+  @@index([vendorPoLabel])
+  @@map("purchase_orders")
+}
+
+/// Job-scoped pre-order lines (shared pool per job — does not change part inventory).
+model JobPreorderLine {
+  id               String   @id @default(cuid())
+  jobNumber        String   @map("job_number")
+  partNumber       String   @map("part_number")
+  description      String?  @db.Text
+  quantity         Int
+  quantityReceived Int      @default(0) @map("quantity_received")
+  uom              String?
+  vendor           String?
+  notes            String?  @db.Text
+  orderedAt        DateTime @default(now()) @map("ordered_at")
+  status           String   @default("OPEN")
+  createdById      String?  @map("created_by_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([jobNumber])
+  @@index([jobNumber, partNumber])
+  @@map("job_preorder_lines")
+}
+
+model Vendor {
+  id          String   @id @default(cuid())
+  vendorKey   String   @unique @map("vendor_key")
+  displayName String   @map("display_name")
+  toEmails    Json     @default("[]") @map("to_emails")
+  ccEmails    Json?    @map("cc_emails")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([displayName])
+  @@index([isActive])
+  @@map("vendors")
+}
+
+model JobLiveViewSession {
+  id         String   @id @default(cuid())
+  sessionId  String   @unique @map("session_id")
+  jobNumber  String   @map("job_number")
+  listNumber String   @map("list_number")
+  userId     String   @map("user_id")
+  userEmail  String   @map("user_email")
+  userName   String?  @map("user_name")
+  activeTab  String   @map("active_tab")
+  lastSeenAt DateTime @map("last_seen_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([jobNumber, listNumber])
+  @@index([jobNumber, listNumber, lastSeenAt])
+  @@index([userId])
+  @@map("job_live_view_sessions")
+}
+
+model JobImport {
+  id                  String          @id @default(cuid())
+  status              JobImportStatus @default(PROCESSING)
+  mode                JobImportMode   @default(NEW_JOB_IMPORT)
+  /// full | header_stub — set at parse time: header_stub when TF picksheet layout has no deterministic material rows
+  importIntent        String          @default("full") @map("import_intent")
+  sourceFileName      String          @map("source_file_name")
+  sourceContentType   String?         @map("source_content_type")
+  sourceFileSize      Int             @default(0) @map("source_file_size")
+  /// pdf | hvuf — selects which parser parseJobImport() runs; set once at draft creation
+  sourceFormat        String          @default("pdf") @map("source_format")
+  sourceStorageMode   String          @default("DATABASE") @map("source_storage_mode")
+  sourceStorageKey    String          @map("source_storage_key")
+  sourceFileBytes     Bytes?          @map("source_file_bytes")
+  rawText             String?         @db.Text @map("raw_text")
+  ocrMetadata         Json?           @map("ocr_metadata")
+  parsedSnapshot      Json?           @map("parsed_snapshot")
+  reviewSnapshot      Json?           @map("review_snapshot")
+  draftState          Json?           @map("draft_state")
+  warningSummary      Json?           @map("warning_summary")
+  duplicateSnapshot   Json?           @map("duplicate_snapshot")
+  parseVersion        String          @default("job-import-v1") @map("parse_version")
+  createdBy           String          @map("created_by")
+  targetJobNumber     String?         @map("target_job_number")
+  targetListNumber    String?         @map("target_list_number")
+  targetJobName       String?         @map("target_job_name")
+  /// Deterministically parsed from the source file at parse time (currently
+  /// only populated for sourceFormat='hvuf') - used to detect re-uploads of
+  /// the same HydraTec export (same job/list/generation date) so the
+  /// watcher doesn't create a duplicate draft for an unchanged pick sheet.
+  parsedJobNumber      String?         @map("parsed_job_number")
+  parsedListNumber     String?         @map("parsed_list_number")
+  parsedStocklistDate  String?         @map("parsed_stocklist_date")
+  committedBy         String?         @map("committed_by")
+  committedAt         DateTime?       @map("committed_at")
+  committedJobNumber  String?         @map("committed_job_number")
+  committedListNumber String?         @map("committed_list_number")
+  commitSummary       Json?           @map("commit_summary")
+  errorMessage        String?         @db.Text @map("error_message")
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+
+  draftAttachments JobImportDraftAttachment[]
+
+  @@index([status])
+  @@index([createdBy])
+  @@index([mode, targetJobNumber, targetListNumber, createdAt])
+  @@index([committedJobNumber, committedListNumber])
+  @@index([createdAt])
+  @@index([parsedJobNumber, parsedListNumber, parsedStocklistDate])
+  @@map("job_imports")
+}
+
+model JobImportDraftAttachment {
+  id              String   @id @default(cuid())
+  jobImportId     String   @map("job_import_id")
+  r2Key           String   @unique @map("r2_key")
+  contentType     String   @map("content_type")
+  sizeBytes       Int      @map("size_bytes")
+  width           Int?
+  height          Int?
+  fileName        String?  @map("file_name")
+  uploadedByEmail String?  @map("uploaded_by_email")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  jobImport JobImport @relation(fields: [jobImportId], references: [id], onDelete: Cascade)
+
+  @@index([jobImportId])
+  @@index([createdAt])
+  @@map("job_import_draft_attachments")
+}
+
+/// A named, revocable API key for a local HydraTec watcher script
+/// (lib/hydraTecWatcherAuth.ts). One per machine/location; the raw secret is
+/// never persisted, only its bcrypt hash.
+model HydraTecWatcherKey {
+  id         String    @id @default(cuid())
+  name       String
+  keyHash    String    @map("key_hash")
+  keyPrefix  String    @map("key_prefix")
+  createdBy  String    @map("created_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  lastSeenAt DateTime? @map("last_seen_at")
+  revokedAt  DateTime? @map("revoked_at")
+
+  @@index([keyPrefix])
+  @@map("hydratec_watcher_keys")
+}
+
+model StandaloneEstimate {
+  id            String   @id @default(cuid())
+  title         String
+  projectName   String?  @map("project_name")
+  projectNumber String?  @map("project_number")
+  locationLine1 String?  @map("location_line_1")
+  locationLine2 String?  @map("location_line_2")
+  bidStatus     String   @default("DRAFT") @map("bid_status")
+  contractPrice Decimal? @db.Decimal(12, 2) @map("contract_price")
+  archived      Boolean  @default(false)
+  createdBy     String?  @map("created_by")
+  updatedBy     String?  @map("updated_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  variants  StandaloneEstimateVariant[]
+
+  @@index([archived, updatedAt], map: "se_estimates_archived_updated_idx")
+  @@index([bidStatus, updatedAt], map: "se_estimates_bid_status_updated_idx")
+  @@index([title], map: "se_estimates_title_idx")
+  @@map("standalone_estimates")
+}
+
+model EstimateLookupOption {
+  id            String   @id @default(cuid())
+  category      String
+  label         String
+  normalizedKey String   @map("normalized_key")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdBy     String?  @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([category, normalizedKey], map: "estimate_lookup_category_key")
+  @@index([category, isActive], map: "estimate_lookup_category_active_idx")
+  @@map("estimate_lookup_options")
+}
+
+model StandaloneEstimateVariant {
+  id              String   @id @default(cuid())
+  estimateId      String   @map("estimate_id")
+  templateKey     String   @default("system-1") @map("template_key")
+  templateVersion String   @default("system-1-v1") @map("template_version")
+  variantKey      String   @default("base") @map("variant_key")
+  variantLabel    String?  @map("variant_label")
+  variantStatus   String   @default("draft") @map("variant_status")
+  data            Json
+  subtotal        Decimal? @db.Decimal(12, 2)
+  totalCost       Decimal? @db.Decimal(12, 2) @map("total_cost")
+  createdBy       String?  @map("created_by")
+  updatedBy       String?  @map("updated_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  estimate  StandaloneEstimate           @relation(fields: [estimateId], references: [id], onDelete: Cascade, map: "se_variants_estimate_id_fkey")
+
+  @@unique([estimateId, templateKey, variantKey], map: "se_variants_est_tpl_variant_key")
+  @@index([estimateId], map: "se_variants_estimate_id_idx")
+  @@index([estimateId, templateKey, variantKey], map: "se_variants_est_tpl_variant_idx")
+  @@index([updatedAt], map: "se_variants_updated_at_idx")
+  @@map("standalone_estimate_variants")
+}
+
+model System1MaterialCatalogOverride {
+  rowKey    String   @id @map("row_key")
+  data      Json
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([updatedAt], map: "system1_material_catalog_overrides_updated_idx")
+  @@map("system1_material_catalog_overrides")
+}
+
+model System1MaterialCatalogEditLog {
+  id            String   @id @default(cuid())
+  rowKey        String   @map("row_key")
+  actorEmail    String?  @map("actor_email")
+  changedFields Json     @map("changed_fields")
+  beforeData    Json     @map("before_data")
+  afterData     Json     @map("after_data")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([rowKey, createdAt(sort: Desc)], map: "system1_material_catalog_logs_row_idx")
+  @@index([createdAt(sort: Desc)], map: "system1_material_catalog_logs_created_idx")
+  @@map("system1_material_catalog_edit_logs")
+}
+
+enum VendorPriceImportStatus {
+  PROCESSING
+  READY
+  FAILED
+  COMMITTED
+  DISCARDED
+}
+
+enum VendorPriceImportSourceType {
+  UPLOAD
+  GMAIL
+}
+
+enum VendorPriceImportLineMatchStatus {
+  MATCHED
+  CONFLICT_IN_FILE
+  UNMATCHED
+  NO_COST_CHANGE
+  EXCLUDED
+  MATCHED_AMBIGUOUS
+  DUPLICATE_COLLAPSED
+}
+
+model VendorPriceProfile {
+  id              String   @id @default(cuid())
+  vendorKey       String   @unique @map("vendor_key")
+  displayName     String   @map("display_name")
+  matchVendorKey  String   @map("match_vendor_key")
+  parserType      String   @map("parser_type")
+  parserConfig    Json     @map("parser_config")
+  gmailConfig     Json?    @map("gmail_config")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  imports VendorPriceImport[]
+
+  @@map("vendor_price_profiles")
+}
+
+model VendorPriceImport {
+  id                String                      @id @default(cuid())
+  status            VendorPriceImportStatus     @default(PROCESSING)
+  vendorKey         String                      @map("vendor_key")
+  sourceType        VendorPriceImportSourceType @default(UPLOAD) @map("source_type")
+  sourceFileName    String                      @map("source_file_name")
+  sourceContentType String?                     @map("source_content_type")
+  sourceFileSize    Int                         @default(0) @map("source_file_size")
+  sourceFileHash    String?                     @map("source_file_hash")
+  sourceFileBytes   Bytes?                      @map("source_file_bytes")
+  summary           Json?                       @map("summary")
+  reviewSnapshot    Json?                       @map("review_snapshot")
+  gmailMessageId    String?                     @map("gmail_message_id")
+  gmailAttachmentId String?                     @map("gmail_attachment_id")
+  createdBy         String                      @map("created_by")
+  committedBy       String?                     @map("committed_by")
+  committedAt       DateTime?                   @map("committed_at")
+  commitSummary     Json?                       @map("commit_summary")
+  errorMessage      String?                     @db.Text @map("error_message")
+  createdAt         DateTime                    @default(now()) @map("created_at")
+  updatedAt         DateTime                    @updatedAt @map("updated_at")
+
+  profile   VendorPriceProfile @relation(fields: [vendorKey], references: [vendorKey])
+  creator   User               @relation("VendorPriceImportCreatedBy", fields: [createdBy], references: [id])
+  committer User?              @relation("VendorPriceImportCommittedBy", fields: [committedBy], references: [id])
+  lines     VendorPriceImportLine[]
+
+  @@index([status])
+  @@index([vendorKey])
+  @@index([createdBy])
+  @@index([createdAt])
+  @@index([gmailMessageId, gmailAttachmentId])
+  @@map("vendor_price_imports")
+}
+
+model VendorPriceImportLine {
+  id                    String                         @id @default(cuid())
+  importId              String                         @map("import_id")
+  rowIndex              Int                            @map("row_index")
+  vendorPartIdRaw       String?                        @map("vendor_part_id_raw")
+  vendorPartIdNormalized String                        @map("vendor_part_id_normalized")
+  descriptionFromFile   String?                        @db.Text @map("description_from_file")
+  uomFromFile           String?                        @map("uom_from_file")
+  proposedCost          Decimal                        @map("proposed_cost") @db.Decimal(10, 2)
+  matchStatus           VendorPriceImportLineMatchStatus @map("match_status")
+  partId                String?                        @map("part_id")
+  costBefore            Decimal?                       @map("cost_before") @db.Decimal(10, 2)
+  costAfter             Decimal?                       @map("cost_after") @db.Decimal(10, 2)
+  percentChange         Decimal?                       @map("percent_change") @db.Decimal(10, 4)
+  conflictGroupId       String?                        @map("conflict_group_id")
+  selected              Boolean                        @default(false)
+  createdAt             DateTime                       @default(now()) @map("created_at")
+  updatedAt             DateTime                       @updatedAt @map("updated_at")
+
+  import VendorPriceImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  part   Part?              @relation(fields: [partId], references: [id], onDelete: SetNull)
+
+  @@index([importId])
+  @@index([importId, matchStatus])
+  @@index([importId, conflictGroupId])
+  @@index([partId])
+  @@map("vendor_price_import_lines")
+}

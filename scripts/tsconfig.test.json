@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "outDir": "../.test-run",
+    "rootDir": "..",
+    "baseUrl": "..",
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": [
+    "../lib/vendorPriceImport/**/*.ts",
+    "../lib/partCostLedger.ts",
+    "../lib/vendorUtils.ts",
+    "../lib/prisma.ts",
+    "test-vendor-price-duplicate-logic.ts",
+    "test-vendor-price-etna-parser.ts",
+    "test-description-part-number.ts"
+  ]
+}

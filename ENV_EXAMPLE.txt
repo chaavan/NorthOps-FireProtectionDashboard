@@ -1,0 +1,121 @@
+# Copy this to .env.local and fill in your values
+
+# ===== GOOGLE SHEETS (Required) =====
+GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account","project_id":"your-project",...}'
+
+# ===== OPENAI API (Required for Backorder Processing) =====
+# Get your API key from https://platform.openai.com/api-keys
+OPENAI_API_KEY=sk-your-openai-api-key
+
+# ===== GOOGLE DOCUMENT AI (Required for PDF OCR) =====
+# Use a dedicated service account JSON for Document AI (recommended if using a separate account).
+# If not set, falls back to GOOGLE_SERVICE_ACCOUNT_JSON above.
+# The service account needs the "Document AI API User" role (roles/documentai.apiUser)
+GOOGLE_DOCUMENT_AI_SERVICE_ACCOUNT_JSON='{"type":"service_account","project_id":"your-project",...}'
+GOOGLE_DOCUMENT_AI_PROJECT_ID=your-gcp-project-id
+GOOGLE_DOCUMENT_AI_LOCATION=us
+GOOGLE_DOCUMENT_AI_PROCESSOR_ID=your-processor-id
+
+# ===== UPLOAD PARSING OPTIONS =====
+# Enable GPT-4o vision validation to cross-reference structured OCR results with image-based parsing.
+# Adds cost and latency per upload, but catches LOOSE/FAB column-swap errors.
+# UPLOAD_VISION_VALIDATION=false
+
+# ===== FEATURE FLAGS =====
+# Estimate tab is enabled by default in development and hidden by default in production.
+# Set to true to expose the Estimate tab, or false to keep it hidden.
+# Set to true to show and enable the standalone Estimates feature.
+NEXT_PUBLIC_ENABLE_ESTIMATE_TAB=false
+
+# ===== SOFTWARE IDENTITY & PORTAL =====
+# Per-deployment branding (each branch/software instance sets its own values).
+NEXT_PUBLIC_SOFTWARE_ID=totalfire
+NEXT_PUBLIC_SOFTWARE_NAME=Total Fire Protection
+NEXT_PUBLIC_SOFTWARE_TAGLINE=Operations Dashboard
+NEXT_PUBLIC_SOFTWARE_LOGO_URL=/icon.png
+
+# Set to false on branch-only deployments that skip the location map portal.
+NEXT_PUBLIC_ENABLE_SOFTWARE_PORTAL=true
+
+# On branch deployments, link back to the portal from the login page (optional).
+# NEXT_PUBLIC_PORTAL_URL=https://portal.example.com
+
+# Optional JSON override for the software catalog on the portal host (array of entries).
+# Each entry: { "id", "name", "description", "logoUrl", "loginUrl", "status": "active"|"coming_soon" }
+# NEXT_PUBLIC_SOFTWARE_CATALOG_JSON=[{"id":"totalfire","name":"Total Fire Protection","description":"Job pulling and shop operations.","logoUrl":"/icon.png","loginUrl":"/login","status":"active"}]
+
+# Required for the location map portal. Use a public Mapbox token (starts with pk.).
+# In production, restrict the token to your deployed domains in Mapbox.
+NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=pk.your-mapbox-public-token
+
+# Password required to unlock Material Catalog editing.
+MATERIAL_CATALOG_EDIT_PASSWORD=change-this-catalog-password
+
+# ===== N8N WEBHOOKS (Deprecated - No longer needed) =====
+# Native backorder processing is now built-in. These are kept for backwards compatibility.
+# N8N_WEBHOOK_URL=https://curran.app.n8n.cloud/webhook-test/email-suppliers
+# N8N_BACKORDER_WEBHOOK_URL=https://curran.app.n8n.cloud/webhook-test/backorder-upload
+
+# ===== PURCHASE ORDER EMAIL (Vendor Orders – Pending to Order) =====
+# n8n webhook that sends the order as email to purchasing@totalfire.biz (e.g. via Outlook).
+# Payload: { subject, body, to, orderNumber, sentBy, sentAt, totalItems, jobs, items }
+# PURCHASE_ORDER_EMAIL_WEBHOOK_URL=https://your-n8n.com/webhook/purchase-order-email
+
+# ===== JOB ACCESS ADDED EMAIL (Access Tab) =====
+# n8n webhook that sends an email to a user when they are granted access to a job.
+# Triggered from the Access tab when a user is added to a job.
+# Payload: { subject, body, to, jobNumber, jobName, accessLevel, grantedBy, grantedByRole, grantedAt }
+# JOB_ACCESS_ADDED_WEBHOOK_URL=https://your-n8n.com/webhook/job-access-added
+
+# ===== JOB NOTIFICATION WEBHOOK (n8n) =====
+# n8n webhook for job-related emails to job-access recipients (and auto-included admins).
+# Set JOB_NOTIFICATION_WEBHOOK_URL. Payloads include subject, htmlBody, to, and metadata.
+# Discriminate by "type" field:
+#   - type: "job_created"  – sent when a new job is created (includes line items, delivery date, etc.)
+#   - type: "note_added"   – sent when a note or reply is added (includes noteContent, noteId, isReply, deliveryDate, etc.)
+# JOB_NOTIFICATION_WEBHOOK_URL=https://your-n8n.com/webhook/job-notifications
+
+# ===== SMARTSHEET INTEGRATION (Optional) =====
+# Auto-marks job complete when all ordered items are received
+SMARTSHEET_TOKEN=your-smartsheet-api-token
+BASE_URL_SMARTSHEET=https://api.smartsheet.com/2.0
+SMARTSHEET_ID=your-smartsheet-sheet-id
+
+# ===== AUTHENTICATION (Required) =====
+# PostgreSQL Database Connection
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=public"
+
+# NextAuth Configuration
+NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_SECRET="generate-with-openssl-rand-base64-32"
+
+# Public dashboard URL for links in outbound emails (job created, access granted, notes, etc.).
+# Production: https://tfp.tools — must match the domain users open in the browser.
+# If unset, falls back to NEXTAUTH_URL (legacy Vercel hosts are rewritten to tfp.tools).
+# PUBLIC_APP_URL="https://tfp.tools"
+
+# Initial Admin User (for first-time setup)
+ADMIN_EMAIL="admin@yourdomain.com"
+ADMIN_PASSWORD="ChangeThisPassword123!"
+ADMIN_NAME="Admin User"
+
+# Developer-only dashboard access (comma-separated emails).
+# Users in this allowlist can view /dev/* tooling and will not see user surveys.
+# Use a non-listed test account to QA the in-app survey popup.
+DEVELOPER_EMAILS="developer1@yourdomain.com,developer2@yourdomain.com"
+
+# In-app user survey popup (shown only after login on protected pages).
+# Set to true to disable the popup entirely (e.g. during incidents).
+# NEXT_PUBLIC_DISABLE_SURVEY_POPUP=false
+# Dismiss / "Remind me later" snoozes the survey for 24 hours in this browser tab.
+# Signing out clears snooze so the next login re-checks whether to show the survey.
+
+# ===== CLOUDFLARE R2 (Job Note Photos) =====
+# Used for private photo attachments on job notes (uploads via presigned URLs)
+CLOUDFLARE_R2_ACCOUNT_ID="your-cloudflare-account-id"
+CLOUDFLARE_R2_ACCESS_KEY_ID="your-r2-access-key-id"
+CLOUDFLARE_R2_SECRET_ACCESS_KEY="your-r2-secret-access-key"
+CLOUDFLARE_R2_BUCKET_NAME="your-r2-bucket-name"
+
+# Optional: signed URL lifetime (seconds)
+CLOUDFLARE_R2_SIGNED_URL_TTL_SECONDS="600"

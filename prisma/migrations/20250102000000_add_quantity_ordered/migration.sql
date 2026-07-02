@@ -1,0 +1,3 @@
+-- This migration was already applied to the database
+-- The quantity_ordered column is now included in the jobs table creation migration
+-- This file exists only to maintain migration history consistency

@@ -1,0 +1,3 @@
+-- This migration directory was missing from the repository.
+-- It appears to have been applied historically on the target database.
+-- The SQL is intentionally left as a no-op to preserve migration history consistency.

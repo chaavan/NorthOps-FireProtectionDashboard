@@ -1,0 +1,2 @@
+ALTER TABLE "jobs"
+ADD COLUMN "quantity_fab" INTEGER NOT NULL DEFAULT 0;
