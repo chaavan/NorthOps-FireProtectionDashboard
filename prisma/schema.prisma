@@ -118,12 +118,15 @@ model Part {
   code                 String?
   vendor               String?
   dateUpdated          String?  @map("date_updated")
+  priceUpdatedAt       DateTime? @map("price_updated_at") // Set only when the catalog cost (price) changes; drives the inventory "Updated" column
   vendorPartID         String?  @map("vendor_part_id")
   costChangePercentage String?  @map("cost_change_percentage")
   status               String?
   quantity             BigInt?  @default(0) // Inventory quantity from Excel
   reorderPoint         Int?     @map("reorder_point") // Minimum on hand for reorder alerts
   orderMinimum         Int?     @map("order_minimum") // Standard reorder quantity when below minimum
+  doNotStock           Boolean  @default(false) @map("do_not_stock") // Explicitly flagged as not stocked; never suggested for reorder
+  reorderSnoozedAt     DateTime? @map("reorder_snoozed_at") // Set when a user cancels an inventory reorder suggestion; suppressed until stock recovers above reorderPoint
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -134,6 +137,7 @@ model Part {
   partInfoChanges    PartInfoChange[]
   jobStockReturnLines JobStockReturnLine[]
   vendorPriceImportLines VendorPriceImportLine[]
+  vendorLeadTimeSamples    VendorLeadTimeSample[]
 
   @@index([pn])
   @@index([company])
@@ -779,9 +783,45 @@ model Vendor {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
+  // Measured delivery performance, maintained from VendorLeadTimeSample (see
+  // lib/vendorLeadTime.ts). Cached rollup so reorder math doesn't aggregate on every read.
+  avgLeadTimeDays     Float?    @map("avg_lead_time_days")
+  leadTimeSampleCount Int       @default(0) @map("lead_time_sample_count")
+  leadTimeUpdatedAt   DateTime? @map("lead_time_updated_at")
+
   @@index([displayName])
   @@index([isActive])
   @@map("vendors")
+}
+
+// One observed order->receipt duration for a single part on a single PO. The clock
+// starts when the PO is sent (PurchaseOrder.sentAt) and stops when the line is
+// received. These rows are the raw evidence behind Vendor.avgLeadTimeDays.
+model VendorLeadTimeSample {
+  id           String   @id @default(cuid())
+  vendorKey    String   @map("vendor_key")
+  purchaseOrderId String @map("purchase_order_id")
+  orderNumber  String?  @map("order_number")
+  partNumber   String   @map("part_number")
+  partId       String?  @map("part_id")
+  orderKind    String   @default("JOB") @map("order_kind")
+  sentAt       DateTime @map("sent_at")
+  receivedAt   DateTime @map("received_at")
+  leadTimeDays Float    @map("lead_time_days")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Deliberately NOT a foreign key to Vendor. The vendors table is only a mail-routing
+  // directory and holds rows for a handful of suppliers, while POs reference many more.
+  // An FK here would silently drop samples for any supplier without a directory row —
+  // which is most of them. vendorKey is the normalized supplier key;
+  // Vendor.avgLeadTimeDays is only a cache for those that do have a row.
+  part Part? @relation(fields: [partId], references: [id], onDelete: SetNull)
+
+  // One sample per (PO, part) — receiving the same line twice must not double-count.
+  @@unique([purchaseOrderId, partNumber])
+  @@index([vendorKey, receivedAt])
+  @@index([partId])
+  @@map("vendor_lead_time_samples")
 }
 
 model JobLiveViewSession {
@@ -908,6 +948,8 @@ model StandaloneEstimate {
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   variants  StandaloneEstimateVariant[]
+  crmOpportunities       CrmOpportunity[]
+  crmEstimateDeficiencies CrmEstimateDeficiency[]
 
   @@index([archived, updatedAt], map: "se_estimates_archived_updated_idx")
   @@index([bidStatus, updatedAt], map: "se_estimates_bid_status_updated_idx")
@@ -1082,4 +1124,302 @@ model VendorPriceImportLine {
   @@index([importId, conflictGroupId])
   @@index([partId])
   @@map("vendor_price_import_lines")
+}
+
+// ===== CRM MODULE (service-sales + deficiency pipeline) =====
+
+model CrmAccount {
+  id            String   @id @default(cuid())
+  name          String
+  accountType   String   @default("direct") @map("account_type")
+  salesRepEmail String?  @map("sales_rep_email")
+  notes         String?  @db.Text
+  createdBy     String?  @map("created_by")
+  updatedBy     String?  @map("updated_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  locations     CrmAccountLocation[]
+  contacts      CrmContact[]
+  inspections   CrmInspection[]
+  deficiencies  CrmDeficiency[]
+  opportunities CrmOpportunity[]
+  renewals      CrmRenewal[]
+  activities    CrmActivity[]
+  tasks         CrmTask[]
+  attachments   CrmAttachment[]
+
+  @@index([name])
+  @@index([salesRepEmail])
+  @@map("crm_accounts")
+}
+
+model CrmAccountLocation {
+  id           String   @id @default(cuid())
+  accountId    String   @map("account_id")
+  name         String
+  addressLine1 String?  @map("address_line_1")
+  addressLine2 String?  @map("address_line_2")
+  city         String?
+  state        String?
+  postalCode   String?  @map("postal_code")
+  isPrimary    Boolean  @default(false) @map("is_primary")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  account       CrmAccount        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  contacts      CrmContact[]
+  inspections   CrmInspection[]
+  deficiencies  CrmDeficiency[]
+  opportunities CrmOpportunity[]
+  renewals      CrmRenewal[]
+
+  @@index([accountId])
+  @@map("crm_account_locations")
+}
+
+model CrmContact {
+  id         String   @id @default(cuid())
+  accountId  String   @map("account_id")
+  locationId String?  @map("location_id")
+  name       String
+  email      String?
+  phone      String?
+  role       String   @default("OTHER")
+  isPrimary  Boolean  @default(false) @map("is_primary")
+  notes      String?  @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  account  CrmAccount          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  location CrmAccountLocation? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  @@index([accountId])
+  @@index([email])
+  @@index([role])
+  @@map("crm_contacts")
+}
+
+model CrmInspection {
+  id             String    @id @default(cuid())
+  accountId      String    @map("account_id")
+  locationId     String?   @map("location_id")
+  inspectionType String    @default("ANNUAL") @map("inspection_type")
+  status         String    @default("SCHEDULED")
+  inspectedAt    DateTime? @map("inspected_at")
+  inspectorName  String?   @map("inspector_name")
+  inspectorEmail String?   @map("inspector_email")
+  notes          String?   @db.Text
+  createdBy      String?   @map("created_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  account      CrmAccount          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  location     CrmAccountLocation? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  deficiencies CrmDeficiency[]
+
+  @@index([accountId])
+  @@index([locationId])
+  @@index([status])
+  @@index([inspectedAt])
+  @@map("crm_inspections")
+}
+
+model CrmDeficiency {
+  id              String   @id @default(cuid())
+  inspectionId    String   @map("inspection_id")
+  accountId       String   @map("account_id")
+  locationId      String?  @map("location_id")
+  title           String
+  description     String?  @db.Text
+  severity        String   @default("MAJOR")
+  status          String   @default("OPEN")
+  estimatedValue  Decimal? @db.Decimal(12, 2) @map("estimated_value")
+  salesRepEmail   String?  @map("sales_rep_email")
+  createdBy       String?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  inspection    CrmInspection          @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  account       CrmAccount             @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  location      CrmAccountLocation?    @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  opportunities CrmOpportunity[]
+  estimateLinks CrmEstimateDeficiency[]
+
+  @@index([inspectionId])
+  @@index([accountId])
+  @@index([status])
+  @@index([salesRepEmail])
+  @@map("crm_deficiencies")
+}
+
+model CrmOpportunity {
+  id            String    @id @default(cuid())
+  accountId     String    @map("account_id")
+  locationId    String?   @map("location_id")
+  deficiencyId  String?   @map("deficiency_id")
+  estimateId    String?   @map("estimate_id")
+  title         String
+  opportunityType String  @default("SERVICE_DEFICIENCY") @map("opportunity_type")
+  stage         String    @default("DEFICIENCY_IDENTIFIED")
+  value         Decimal?  @db.Decimal(12, 2)
+  salesRepEmail String?   @map("sales_rep_email")
+  scheduledAt   DateTime? @map("scheduled_at")
+  wonAt         DateTime? @map("won_at")
+  lostAt        DateTime? @map("lost_at")
+  lostReason    String?   @map("lost_reason") @db.Text
+  notes         String?   @db.Text
+  createdBy     String?   @map("created_by")
+  updatedBy     String?   @map("updated_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  account     CrmAccount             @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  location    CrmAccountLocation?    @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  deficiency  CrmDeficiency?         @relation(fields: [deficiencyId], references: [id], onDelete: SetNull)
+  estimate    StandaloneEstimate?    @relation(fields: [estimateId], references: [id], onDelete: SetNull)
+
+  @@index([accountId])
+  @@index([deficiencyId])
+  @@index([estimateId])
+  @@index([stage])
+  @@index([salesRepEmail])
+  @@map("crm_opportunities")
+}
+
+model CrmEstimateDeficiency {
+  id           String   @id @default(cuid())
+  estimateId   String   @map("estimate_id")
+  deficiencyId String   @map("deficiency_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  estimate   StandaloneEstimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  deficiency CrmDeficiency      @relation(fields: [deficiencyId], references: [id], onDelete: Cascade)
+
+  @@unique([estimateId, deficiencyId])
+  @@index([estimateId])
+  @@index([deficiencyId])
+  @@map("crm_estimate_deficiencies")
+}
+
+model CrmRenewal {
+  id             String    @id @default(cuid())
+  accountId      String    @map("account_id")
+  locationId     String?   @map("location_id")
+  contractName   String    @map("contract_name")
+  serviceType    String    @default("INSPECTION_TESTING") @map("service_type")
+  renewalDate    DateTime  @map("renewal_date")
+  annualValue    Decimal?  @db.Decimal(12, 2) @map("annual_value")
+  status         String    @default("ACTIVE")
+  salesRepEmail  String?   @map("sales_rep_email")
+  notes          String?   @db.Text
+  createdBy      String?   @map("created_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  account  CrmAccount          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  location CrmAccountLocation? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  @@index([accountId])
+  @@index([renewalDate])
+  @@index([status])
+  @@index([salesRepEmail])
+  @@map("crm_renewals")
+}
+
+// ===== CRM HubSpot-style basics: activities, tasks, tags, attachments =====
+// entityType/entityId are a polymorphic anchor (ACCOUNT|CONTACT|OPPORTUNITY|
+// DEFICIENCY) following the InventoryMovement contextType/contextId convention.
+// accountId is a denormalized FK so an account record page can load all activity
+// across its contacts/opportunities in one query and cascade-clean on delete.
+
+model CrmActivity {
+  id           String   @id @default(cuid())
+  entityType   String   @map("entity_type")
+  entityId     String   @map("entity_id")
+  accountId    String?  @map("account_id")
+  activityType String   @default("NOTE") @map("activity_type")
+  subject      String?
+  body         String?  @db.Text
+  occurredAt   DateTime @default(now()) @map("occurred_at")
+  createdBy    String?  @map("created_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  account CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([entityType, entityId])
+  @@index([accountId])
+  @@index([occurredAt])
+  @@map("crm_activities")
+}
+
+model CrmTask {
+  id            String    @id @default(cuid())
+  title         String
+  description   String?   @db.Text
+  dueDate       DateTime? @map("due_date")
+  status        String    @default("OPEN")
+  assigneeEmail String?   @map("assignee_email")
+  entityType    String?   @map("entity_type")
+  entityId      String?   @map("entity_id")
+  accountId     String?   @map("account_id")
+  createdBy     String?   @map("created_by")
+  completedAt   DateTime? @map("completed_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  account CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([assigneeEmail, status])
+  @@index([entityType, entityId])
+  @@index([dueDate])
+  @@map("crm_tasks")
+}
+
+model CrmTag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String   @default("#3b82f6")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  entityTags CrmEntityTag[]
+
+  @@map("crm_tags")
+}
+
+model CrmEntityTag {
+  id         String   @id @default(cuid())
+  tagId      String   @map("tag_id")
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tag CrmTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([tagId, entityType, entityId])
+  @@index([entityType, entityId])
+  @@map("crm_entity_tags")
+}
+
+model CrmAttachment {
+  id          String   @id @default(cuid())
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id")
+  accountId   String?  @map("account_id")
+  r2Key       String   @unique @map("r2_key")
+  contentType String   @map("content_type")
+  sizeBytes   Int      @map("size_bytes")
+  width       Int?
+  height      Int?
+  fileName    String?  @map("file_name")
+  createdBy   String?  @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  account CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([entityType, entityId])
+  @@index([accountId])
+  @@index([createdAt])
+  @@map("crm_attachments")
 }

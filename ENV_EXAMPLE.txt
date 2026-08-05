@@ -28,6 +28,18 @@ NEXT_PUBLIC_ENABLE_ESTIMATE_TAB=false
 # NEXT_PUBLIC_ESTIMATE_WORK_DAY_HOURS=8
 # NEXT_PUBLIC_ESTIMATE_PRODUCTION_RATE_SCALE=1.12
 
+# CRM module: the /crm route, its sidebar entry, and /api/crm/*.
+# On unless set to "false". Access is additionally gated by the crm.view
+# permission, so enabling this does not by itself expose the CRM to anyone.
+NEXT_PUBLIC_ENABLE_CRM=true
+
+# Inventory replenishment suggests an order-up-to quantity — how far below the
+# reorder point stock has fallen, less demand already committed to open jobs —
+# instead of a flat Order Min. Off unless "true".
+# Production ships this off; the demo turns it on because the order-up-to
+# suggestion is the visible payoff of the inventory levels engine.
+NEXT_PUBLIC_ENABLE_DYNAMIC_REORDER=true
+
 # ===== SOFTWARE IDENTITY & PORTAL =====
 # Per-deployment branding (each branch/software instance sets its own values).
 NEXT_PUBLIC_SOFTWARE_ID=northops-fire
