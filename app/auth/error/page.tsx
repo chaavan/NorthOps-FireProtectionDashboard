@@ -3,6 +3,7 @@
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { softwareConfig } from '@/lib/softwareConfig';
 
 function ErrorContent() {
   const searchParams = useSearchParams();
@@ -40,7 +41,7 @@ function ErrorContent() {
             <div className="relative animate-pulse-glow">
               <img 
                 src="/icon.png" 
-                alt="Total Fire Protection" 
+                alt={softwareConfig.name} 
                 className="h-20 w-20 rounded-2xl shadow-xl"
               />
             </div>

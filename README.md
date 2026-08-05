@@ -52,8 +52,9 @@ npm start
 
 ## 📊 Data Source
 
-The application connects to a Google Sheet with the following details:
-- **Spreadsheet ID**: `1U-az1-yK4p-GZAbdoK9O9ujM4belavYeBRNogxxEwUQ`
+The application can connect to a Google Sheet. Configure it with `SMARTSHEET_ID` /
+`GOOGLE_SERVICE_ACCOUNT_JSON` in your env — no spreadsheet is referenced in this repo.
+- **Spreadsheet ID**: set via env (see `ENV_EXAMPLE.txt`)
 - **Tab Name**: `Job Tracker`
 - **Expected Columns** (A-Q):
   - Job Number
@@ -299,5 +300,3 @@ This project is proprietary software for internal use.
 ## 🤝 Support
 
 For questions or issues, please contact your development team.
-
-# totalfireprotection

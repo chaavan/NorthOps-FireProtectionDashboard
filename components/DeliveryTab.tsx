@@ -7,6 +7,7 @@ import type { JobLineItem, JobMetadata } from "@/lib/types";
 import type { BackordersOtherVendor, DeliveryRecord } from "@/lib/deliveryTypes";
 import { formatDateInAppTimeZone, toDateKeyInAppTimeZone } from "@/lib/timezone";
 import { getRemainingQty } from "@/lib/quantityMath";
+import { softwareConfig } from '@/lib/softwareConfig';
 
 const TEST_GAUGE_VENDOR_NAME = "TEST GAUGE";
 
@@ -1295,12 +1296,12 @@ export default function DeliveryTab({
             <div className="absolute inset-0 bg-purple-500 rounded-full opacity-20 animate-ping"></div>
             <img
               src="/icon.png"
-              alt="Total Fire Protection"
+              alt={softwareConfig.name}
               className="h-20 w-20 mx-auto animate-float relative z-10 rounded-2xl shadow-xl"
             />
           </div>
           <p className="text-white font-bold mt-8 text-2xl">
-            Total Fire Protection
+            {softwareConfig.name}
           </p>
           <p className="text-slate-400 font-semibold mt-3">
             Loading delivery information...

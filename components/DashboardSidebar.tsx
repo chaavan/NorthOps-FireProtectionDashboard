@@ -51,7 +51,7 @@ const NAV_ICON_PROPS = { strokeWidth: 2.25, "aria-hidden": true as const };
 function splitBrandName(name: string): { primary: string; secondary: string | null } {
   const words = name.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) {
-    return { primary: "TOTAL", secondary: "FIRE PROTECTION" };
+    return { primary: "NORTHOPS", secondary: null };
   }
   if (words.length === 1) {
     return { primary: words[0].toUpperCase(), secondary: null };

@@ -1,6 +1,7 @@
 import React from "react";
 import { Document, Image, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import type { EstimateComputed, EstimateVisibleMaterialLine } from "@/lib/estimateTypes";
+import { softwareConfig } from '@/lib/softwareConfig';
 
 type Props = {
   computed: EstimateComputed;
@@ -200,7 +201,7 @@ export function EstimateVariantPage({
         <View style={styles.brand}>
           {logoDataUri ? <Image src={logoDataUri} style={styles.logo} /> : null}
           <View>
-            <Text style={styles.brandName}>Total Fire Protection</Text>
+            <Text style={styles.brandName}>{softwareConfig.name}</Text>
             <Text style={styles.brandSub}>Standalone Estimate</Text>
           </View>
         </View>
@@ -292,7 +293,7 @@ export function EstimateVariantPage({
       </View>
 
       <View style={styles.footer} fixed>
-        <Text>Total Fire Protection</Text>
+        <Text>{softwareConfig.name}</Text>
         <Text>Estimate export</Text>
       </View>
     </Page>

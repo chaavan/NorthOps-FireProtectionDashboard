@@ -1,6 +1,10 @@
 /**
- * Create or update the local admin/developer account from .env.
- * Run with: npx tsx scripts/create-chaavan-admin.ts
+ * Create or update the local developer/admin account from .env.
+ * Run with: npx tsx scripts/create-demo-users.ts
+ *
+ * Credentials come from ADMIN_EMAIL / ADMIN_PASSWORD / ADMIN_NAME. There is no
+ * hardcoded fallback password on purpose — a demo deployment must not ship with
+ * a known-good login baked into the repo.
  */
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
@@ -9,9 +13,16 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function createDeveloperAccount() {
-  const email = (process.env.ADMIN_EMAIL || 'surechaavanchidroop@gmail.com').trim().toLowerCase();
-  const password = process.env.ADMIN_PASSWORD || 'test1234';
-  const name = process.env.ADMIN_NAME || 'Chaavan';
+  const email = (process.env.ADMIN_EMAIL || 'admin@northops.local').trim().toLowerCase();
+  const password = process.env.ADMIN_PASSWORD?.trim();
+  const name = process.env.ADMIN_NAME?.trim() || 'Demo Admin';
+
+  if (!password) {
+    console.error('❌ ADMIN_PASSWORD is required. Set it in .env.local and re-run.');
+    process.exitCode = 1;
+    await prisma.$disconnect();
+    return;
+  }
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10);

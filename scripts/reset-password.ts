@@ -9,8 +9,13 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function resetPassword() {
-  const email = process.env.ADMIN_EMAIL || 'advanicurran@gmail.com';
-  const newPassword = process.env.ADMIN_PASSWORD || 'totalfire.biz';
+  const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  const newPassword = process.env.ADMIN_PASSWORD?.trim();
+
+  if (!email || !newPassword) {
+    console.log('❌ ADMIN_EMAIL and ADMIN_PASSWORD are both required.');
+    return;
+  }
 
   try {
     // Check if user exists

@@ -102,9 +102,13 @@ NEXTAUTH_URL="http://localhost:3000"
 NEXTAUTH_SECRET="generate-with-openssl-rand-base64-32"
 
 # Public dashboard URL for links in outbound emails (job created, access granted, notes, etc.).
-# Production: https://tfp.tools — must match the domain users open in the browser.
-# If unset, falls back to NEXTAUTH_URL (legacy Vercel hosts are rewritten to tfp.tools).
-# PUBLIC_APP_URL="https://tfp.tools"
+# Must match the domain users actually open in the browser, or emailed links land
+# on the wrong host. If unset, falls back to NEXTAUTH_URL, then to localhost.
+# PUBLIC_APP_URL="https://demo.example.com"
+
+# Address that purchase-order mail falls back to when a supplier has no configured
+# recipients. Leave unset to disable the fallback (no mail is addressed to it).
+# NEXT_PUBLIC_PURCHASING_FALLBACK_EMAIL="purchasing@example.com"
 
 # Initial Admin User (for first-time setup)
 ADMIN_EMAIL="admin@yourdomain.com"

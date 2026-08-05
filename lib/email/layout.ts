@@ -1,6 +1,7 @@
 import { escapeHtml } from './escapeHtml';
+import { softwareConfig } from '@/lib/softwareConfig';
 
-export const EMAIL_BRAND = 'Total Fire Protection';
+export const EMAIL_BRAND = softwareConfig.name;
 
 export type EmailBadgeVariant =
   | 'newJob'

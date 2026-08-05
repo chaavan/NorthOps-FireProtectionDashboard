@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { JobLineItem, JobMetadata, UpdateJobResponse } from '@/lib/types';
 import { buildSalesTaxTotals } from '@/lib/stockBackPdfShared';
 import PurchaseOrderPDFButton from './PurchaseOrderPDFButton';
+import { softwareConfig } from '@/lib/softwareConfig';
 
 interface PurchaseOrderTabProps {
   jobNumber: string;
@@ -634,11 +635,11 @@ export default function PurchaseOrderTab({
             <div className="absolute inset-0 bg-yellow-500 rounded-full opacity-20 animate-ping"></div>
             <img
               src="/icon.png"
-              alt="Total Fire Protection"
+              alt={softwareConfig.name}
               className="h-20 w-20 mx-auto animate-float relative z-10 rounded-2xl shadow-xl"
             />
           </div>
-          <p className="text-slate-900 dark:text-white font-bold mt-8 text-2xl">Total Fire Protection</p>
+          <p className="text-slate-900 dark:text-white font-bold mt-8 text-2xl">{softwareConfig.name}</p>
           <p className="text-slate-700 dark:text-slate-400 font-semibold mt-3">Loading pricing data...</p>
           <div className="flex justify-center gap-2 mt-4">
             <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>

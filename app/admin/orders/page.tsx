@@ -19,6 +19,7 @@ import { formatDateInAppTimeZone } from '@/lib/timezone';
 import { getRemainingQty } from '@/lib/quantityMath';
 import { INVENTORY_REORDER_LIST_NUMBER } from '@/lib/inventoryReorder';
 import { formatVendorDisplay, normalizeVendorKey } from '@/lib/vendorUtils';
+import { softwareConfig } from '@/lib/softwareConfig';
 
 interface OrderItem {
   jobNumber: string;
@@ -2236,8 +2237,13 @@ export default function AdminOrdersPage() {
         supplierKey,
         supplierName: displaySupplierName(supplierKey),
         items,
-        toEmails: fallbackToPurchasing ? ['purchasing@totalfire.biz'] : toEmails,
-        ccEmails: Array.from(new Set([...(ccEmails || []), 'purchasing@totalfire.biz'])),
+        toEmails:
+          fallbackToPurchasing && softwareConfig.purchasingFallbackEmail
+            ? [softwareConfig.purchasingFallbackEmail]
+            : toEmails,
+        ccEmails: Array.from(
+          new Set([...(ccEmails || []), softwareConfig.purchasingFallbackEmail]),
+        ).filter(Boolean),
         fallbackToPurchasing,
         needsSetup: fallbackToPurchasing,
       };

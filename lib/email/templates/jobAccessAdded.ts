@@ -9,6 +9,7 @@ import {
   renderKeyValueList,
   renderMutedText,
   renderPrimaryButton,
+  EMAIL_BRAND,
 } from '@/lib/email/layout';
 
 export type JobAccessAddedEmailProps = {
@@ -63,7 +64,7 @@ export function buildJobAccessAddedEmailHtml(
       renderHero({
         title: `Hello, ${recipientName}`,
         subtitle: jobSubtitle,
-        intro: 'You have been granted access to this job in the Total Fire Protection dashboard.',
+        intro: `You have been granted access to this job in the ${EMAIL_BRAND} dashboard.`,
       }),
       renderKeyValueGrid([
         { label: 'Job', value: jobNumber },

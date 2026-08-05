@@ -18,6 +18,7 @@ import {
   isInventoryReplenishmentJobNumber,
 } from '@/lib/inventoryReorder';
 import { requirePermission } from '@/lib/permissions';
+import { softwareConfig } from '@/lib/softwareConfig';
 import { getVendorDirectoryByKeys } from '@/lib/vendorService';
 import { sendPurchaseOrderWebhook } from '@/lib/purchaseOrderWebhook';
 
@@ -147,7 +148,7 @@ function buildVendorOrderTextEmail(params: {
 }): string {
   const { vendorPoLabel, orderNumber, supplierName, sentBy, formattedDate, items } = params;
   return [
-    'TOTAL FIRE PROTECTION PURCHASE REQUEST',
+    `${softwareConfig.name.toUpperCase()} PURCHASE REQUEST`,
     `Job Info: ${vendorPoLabel}`,
     `Reference ID: ${orderNumber}`,
     `Supplier: ${supplierName}`,
@@ -227,7 +228,7 @@ export async function POST(request: NextRequest) {
     const now = new Date();
     const sentBy = (session.user as any).name || (session.user as any).email || 'Unknown';
     const batchId = randomUUID();
-    const purchasingEmail = (process.env.PURCHASING_FALLBACK_EMAIL || 'purchasing@totalfire.biz').trim().toLowerCase();
+    const purchasingEmail = softwareConfig.purchasingFallbackEmail;
 
     // Sequence is per day across all supplier orders
     const dateStr = toDateKeyInAppTimeZone(now).replace(/-/g, '');
@@ -305,10 +306,10 @@ export async function POST(request: NextRequest) {
       const recipientCcFromDirectory = parseEmailList(directoryEntry?.ccEmails ?? []);
       const fallbackToPurchasing = recipientTo.length === 0;
       if (fallbackToPurchasing) {
-        recipientTo = [purchasingEmail];
+        recipientTo = purchasingEmail ? [purchasingEmail] : [];
       }
 
-      const recipientCc = [...new Set([...recipientCcFromDirectory, purchasingEmail])];
+      const recipientCc = [...new Set([...recipientCcFromDirectory, purchasingEmail])].filter(Boolean);
       const formattedDate = formatDateInAppTimeZone(now, {
         weekday: 'long',
         year: 'numeric',
@@ -385,7 +386,7 @@ export async function POST(request: NextRequest) {
       });
 
       const webhookResult = await sendPurchaseOrderWebhook({
-        subject: `Total Fire Protection Purchase Request | ${vendorPoLabel} | ${supplierName}`,
+        subject: `${softwareConfig.name} Purchase Request | ${vendorPoLabel} | ${supplierName}`,
         to: recipientTo.join(','),
         cc: recipientCc.join(','),
         supplier: supplierName,
@@ -503,10 +504,10 @@ export async function POST(request: NextRequest) {
       const recipientCcFromDirectory = parseEmailList(directoryEntry?.ccEmails ?? []);
       const fallbackToPurchasing = recipientTo.length === 0;
       if (fallbackToPurchasing) {
-        recipientTo = [purchasingEmail];
+        recipientTo = purchasingEmail ? [purchasingEmail] : [];
       }
 
-      const recipientCc = [...new Set([...recipientCcFromDirectory, purchasingEmail])];
+      const recipientCc = [...new Set([...recipientCcFromDirectory, purchasingEmail])].filter(Boolean);
       const formattedDate = formatDateInAppTimeZone(now, {
         weekday: 'long',
         year: 'numeric',
@@ -555,7 +556,7 @@ export async function POST(request: NextRequest) {
       });
 
       const webhookResult = await sendPurchaseOrderWebhook({
-        subject: `Total Fire Protection Purchase Request | ${vendorPoLabel} | ${supplierName}`,
+        subject: `${softwareConfig.name} Purchase Request | ${vendorPoLabel} | ${supplierName}`,
         to: recipientTo.join(','),
         cc: recipientCc.join(','),
         supplier: supplierName,
