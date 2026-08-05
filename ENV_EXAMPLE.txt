@@ -40,6 +40,11 @@ NEXT_PUBLIC_ENABLE_CRM=true
 # suggestion is the visible payoff of the inventory levels engine.
 NEXT_PUBLIC_ENABLE_DYNAMIC_REORDER=true
 
+# Positioning banner across the top of every dashboard page, for client
+# walkthroughs ("One job record ... Entered once."). On unless set to "false".
+# Set this to false for any deployment that is not a pitch.
+NEXT_PUBLIC_SHOW_DEMO_BANNER=true
+
 # ===== SOFTWARE IDENTITY & PORTAL =====
 # Per-deployment branding (each branch/software instance sets its own values).
 NEXT_PUBLIC_SOFTWARE_ID=northops-fire

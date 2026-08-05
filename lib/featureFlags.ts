@@ -29,3 +29,14 @@ export function isCrmEnabled() {
 export function isDynamicReorderEnabled() {
   return process.env.NEXT_PUBLIC_ENABLE_DYNAMIC_REORDER === "true";
 }
+
+/**
+ * The positioning banner shown across every dashboard page while this build is
+ * being walked through with a prospective client. On unless set to "false" —
+ * turn it off for any deployment that is not a pitch.
+ *
+ * NEXT_PUBLIC_* is inlined at build time, so changing it needs a rebuild.
+ */
+export function isDemoBannerEnabled() {
+  return process.env.NEXT_PUBLIC_SHOW_DEMO_BANNER !== "false";
+}

@@ -7,6 +7,7 @@ import { SurveyProvider } from '@/lib/survey/SurveyContext'
 import { ThemeProvider } from '@/lib/ThemeContext'
 import { PermissionsProvider } from '@/lib/PermissionsContext'
 import { softwareConfig } from '@/lib/softwareConfig'
+import DemoBanner from '@/components/DemoBanner'
 
 export const metadata: Metadata = {
   title: `${softwareConfig.name} Dashboard`,
@@ -35,6 +36,7 @@ export default function RootLayout({
           <SessionProvider>
             <PermissionsProvider>
               <SurveyProvider>
+                <DemoBanner />
                 {children}
                 <SurveyPopupHost />
               </SurveyProvider>

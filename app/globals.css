@@ -1157,3 +1157,38 @@ select:-webkit-autofill:active {
 .dark .brand-logo-auto {
   filter: brightness(0) invert(1);
 }
+/* ---------------------------------------------------------------------------
+ * Demo positioning banner (components/DemoBanner.tsx)
+ *
+ * The banner is fixed at the top, so the page below has to give back exactly its
+ * height. Every page shell here is a full-height flex layout (h-screen /
+ * min-h-screen), which would otherwise run past the fold once the banner is
+ * present. Offsetting the body and shrinking those two utilities by the measured
+ * --demo-banner-h keeps all existing layouts correct without editing any page.
+ * --------------------------------------------------------------------------- */
+body[data-demo-banner='true'] {
+  padding-top: var(--demo-banner-h, 0px);
+}
+
+body[data-demo-banner='true'] .h-screen {
+  height: calc(100vh - var(--demo-banner-h, 0px));
+}
+
+body[data-demo-banner='true'] .min-h-screen {
+  min-height: calc(100vh - var(--demo-banner-h, 0px));
+}
+
+/* Full-viewport overlays (modals, drawers) must still cover the whole screen,
+   including behind the banner, so pull them back up out of the body offset. */
+body[data-demo-banner='true'] .fixed.inset-0 {
+  top: calc(-1 * var(--demo-banner-h, 0px));
+}
+
+@media print {
+  body[data-demo-banner='true'] {
+    padding-top: 0;
+  }
+  body[data-demo-banner='true'] .h-screen {
+    height: auto;
+  }
+}
