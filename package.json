@@ -36,7 +36,8 @@
     "test:inventory-levels": "tsx --tsconfig scripts/tsconfig.rbac.json scripts/test-inventory-levels.ts",
     "scrub:system1": "tsx scripts/scrub-system1-sheet.ts --snapshot && tsx scripts/scrub-system1-sheet.ts && tsx scripts/scrub-system1-sheet.ts --verify",
     "auth:setup": "./scripts/setup-auth.sh",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "db:check-state": "tsx scripts/check-db-state.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.971.0",
