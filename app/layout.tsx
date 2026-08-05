@@ -31,6 +31,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
+      <head>
+        {/* Brand accent as CSS variables, so a deployment re-skins via env
+            rather than a rebuild of every accent-coloured class. */}
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `:root{--brand-accent:${softwareConfig.accentColor};--brand-accent-strong:${softwareConfig.accentStrongColor};}`,
+          }}
+        />
+      </head>
       <body suppressHydrationWarning>
         <ThemeProvider>
           <SessionProvider>

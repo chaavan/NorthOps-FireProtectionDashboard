@@ -373,7 +373,7 @@ function LoginPageContent() {
             <button
               type="submit"
               disabled={isLoading}
-              className="group mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-blue-300/30 bg-blue-500/20 py-3.5 text-sm font-bold text-blue-100 transition hover:border-blue-300/50 hover:bg-blue-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+              className="group mt-2 flex w-full items-center justify-center gap-2 rounded-xl brand-accent-bg brand-accent-ring py-3.5 text-sm font-bold text-white transition disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isLoading ? (
                 <>

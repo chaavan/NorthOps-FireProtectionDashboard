@@ -70,19 +70,19 @@ export default function DemoBanner() {
       ref={ref}
       role="note"
       aria-label="Product positioning"
-      className="fixed inset-x-0 top-0 z-[60] border-b border-blue-500/30 bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white shadow-lg shadow-blue-950/20"
+      className="brand-accent-border fixed inset-x-0 top-0 z-[60] border-b-2 bg-slate-950 text-white shadow-lg shadow-black/30"
     >
       <div className="mx-auto flex max-w-[1600px] flex-col gap-1.5 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-6">
         <p className="text-[13px] leading-snug sm:text-sm">
           <span className="font-bold text-white">One job record.</span>{" "}
-          <span className="text-blue-100/90">
+          <span className="text-slate-300">
             Estimate, time cards, material receipts, photos, manager communication, invoice.
           </span>{" "}
-          <span className="font-bold text-white underline decoration-blue-400 decoration-2 underline-offset-4">
+          <span className="brand-accent-border font-bold text-white underline decoration-2 underline-offset-4 [text-decoration-color:var(--brand-accent)]">
             Entered once.
           </span>
         </p>
-        <p className="shrink-0 text-[11px] font-medium uppercase tracking-[0.12em] text-blue-300/70 sm:text-right">
+        <p className="brand-accent-text shrink-0 text-[11px] font-semibold uppercase tracking-[0.12em] opacity-80 sm:text-right">
           A working template — we build on this to fit how your team works
         </p>
       </div>

@@ -20,11 +20,17 @@ export default function BrandLogo({
   src,
   alt,
 }: BrandLogoProps) {
+  // A full-colour mark opts out of the tone-flattening filters entirely —
+  // brightness(0) invert(1) would turn a two-colour logo into a white blob.
+  const treatment = softwareConfig.logoPreserveColor
+    ? "brand-logo-preserve"
+    : variantClasses[variant];
+
   return (
     <img
       src={src ?? softwareConfig.logoUrl}
-      alt={alt ?? "NorthOps"}
-      className={`brand-logo ${variantClasses[variant]} ${className}`.trim()}
+      alt={alt ?? softwareConfig.name}
+      className={`brand-logo ${treatment} ${className}`.trim()}
       decoding="async"
     />
   );

@@ -112,7 +112,7 @@ function SidebarNavItem({
         ${collapsed ? "flex justify-center px-0 py-3" : "flex items-center gap-3 px-3 py-2.5"}
         ${
           active
-            ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30"
+            ? "brand-accent-bg brand-accent-ring text-white shadow-lg"
             : "text-slate-600 hover:bg-slate-100/90 hover:text-slate-900 hover:shadow-md hover:shadow-slate-900/[0.06] dark:text-slate-300 dark:hover:bg-slate-700/75 dark:hover:text-white dark:hover:shadow-black/20"
         }
       `}

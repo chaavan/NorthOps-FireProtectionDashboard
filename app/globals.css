@@ -1157,6 +1157,48 @@ select:-webkit-autofill:active {
 .dark .brand-logo-auto {
   filter: brightness(0) invert(1);
 }
+
+/* Full-colour marks keep their own palette in both themes. A logo whose dark
+   elements would otherwise vanish on a dark background gets a soft light plate
+   behind it instead of being recoloured. */
+.brand-logo-preserve {
+  filter: none;
+}
+
+.dark .brand-logo-preserve {
+  background-color: rgba(255, 255, 255, 0.94);
+  border-radius: 0.375rem;
+  padding: 0.1875rem 0.375rem;
+  box-sizing: content-box;
+}
+
+/* ---------------------------------------------------------------------------
+ * Brand accent
+ *
+ * Driven from softwareConfig (NEXT_PUBLIC_BRAND_ACCENT / _STRONG), injected as
+ * variables on :root by app/layout.tsx. `--brand-accent` is the logo colour, for
+ * borders, highlights and text on dark. `--brand-accent-strong` is the darker
+ * variant used wherever white text sits on a solid fill, so contrast holds.
+ * --------------------------------------------------------------------------- */
+.brand-accent-bg {
+  background-color: var(--brand-accent-strong);
+}
+
+.brand-accent-bg:hover {
+  background-color: var(--brand-accent);
+}
+
+.brand-accent-text {
+  color: var(--brand-accent);
+}
+
+.brand-accent-border {
+  border-color: var(--brand-accent);
+}
+
+.brand-accent-ring {
+  box-shadow: 0 10px 15px -3px color-mix(in srgb, var(--brand-accent-strong) 30%, transparent);
+}
 /* ---------------------------------------------------------------------------
  * Demo positioning banner (components/DemoBanner.tsx)
  *

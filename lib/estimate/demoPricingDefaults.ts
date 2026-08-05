@@ -29,7 +29,17 @@ export const DEMO_ESTIMATE_PROJECT_PRICING = {
   squareFootage: 12500,
 } as const;
 
+/**
+ * Whether new estimates open with the round demo pricing controls.
+ *
+ * Prefer the explicit flag. The software-id fallback is kept only so existing
+ * northops-fire deployments behave as before — do NOT add new behaviour keyed to
+ * the id, because renaming a deployment then silently changes pricing.
+ */
 export function useDemoEstimatePricingDefaults(): boolean {
+  const explicit = process.env.NEXT_PUBLIC_USE_DEMO_ESTIMATE_PRICING?.trim();
+  if (explicit === "true") return true;
+  if (explicit === "false") return false;
   return softwareConfig.id === "northops-fire";
 }
 

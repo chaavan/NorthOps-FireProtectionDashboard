@@ -24,7 +24,12 @@ NEXT_PUBLIC_ENABLE_ESTIMATE_TAB=false
 
 # Estimate workbook profile (auto-selects northops when NEXT_PUBLIC_SOFTWARE_ID=northops-fire).
 # Values: tfp | northops
-# NEXT_PUBLIC_ESTIMATE_WORKBOOK_PROFILE=northops
+# Pin these explicitly rather than relying on NEXT_PUBLIC_SOFTWARE_ID. Both used
+# to fall back to a literal "northops-fire" id check, so renaming a deployment
+# silently reverted the estimate workbook to the TFP profile (16-hour work day,
+# TFP-labelled shop rows) and turned demo pricing off.
+NEXT_PUBLIC_ESTIMATE_WORKBOOK_PROFILE=northops
+NEXT_PUBLIC_USE_DEMO_ESTIMATE_PRICING=true
 # NEXT_PUBLIC_ESTIMATE_WORK_DAY_HOURS=8
 # NEXT_PUBLIC_ESTIMATE_PRODUCTION_RATE_SCALE=1.12
 
@@ -52,6 +57,19 @@ NEXT_PUBLIC_SOFTWARE_NAME=Fire Protection
 NEXT_PUBLIC_SOFTWARE_TAGLINE=Operational Dashboard
 NEXT_PUBLIC_SOFTWARE_LOGO_URL=/northops-logo.png
 NEXT_PUBLIC_SOFTWARE_LOGO_ICON_URL=/northops-icon.png
+
+# Set true for a full-colour logo. The default treatment flattens the mark to a
+# single tone in dark mode, which suits a monochrome wordmark but turns a
+# two-colour logo into a white blob. True also puts a light plate behind it so
+# dark elements stay visible on dark backgrounds.
+NEXT_PUBLIC_SOFTWARE_LOGO_PRESERVE_COLOR=false
+
+# Brand accent. _ACCENT is the logo colour (borders, highlights, accent text);
+# _ACCENT_STRONG is a darker variant used behind white text, so pick one that
+# clears 4.5:1 against white or buttons become unreadable.
+# QUOTE THESE — an unquoted # starts a comment and the value parses as empty.
+NEXT_PUBLIC_BRAND_ACCENT="#2563eb"
+NEXT_PUBLIC_BRAND_ACCENT_STRONG="#1d4ed8"
 
 # Set to false on branch-only deployments that skip the location map portal.
 # Defaults to false when NEXT_PUBLIC_SOFTWARE_ID=northops-fire.

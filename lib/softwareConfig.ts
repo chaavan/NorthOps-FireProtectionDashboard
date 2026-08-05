@@ -9,6 +9,16 @@ export type SoftwareConfig = {
   portalUrl: string | null;
   rolePermissionManagementEnabled: boolean;
   /**
+   * Keep the logo's own colours instead of flattening it to a single tone in
+   * dark mode. The default treatment (brightness(0) invert(1)) suits a
+   * monochrome wordmark but destroys a two-colour mark.
+   */
+  logoPreserveColor: boolean;
+  /** Brand accent, used for highlights, borders and accent text. */
+  accentColor: string;
+  /** Darker accent for solid fills that carry white text (contrast-safe). */
+  accentStrongColor: string;
+  /**
    * Address that purchase-order mail falls back to when a supplier has no
    * configured recipients. Empty means "no fallback" — callers must filter it
    * out rather than mailing an empty address.
@@ -16,31 +26,57 @@ export type SoftwareConfig = {
   purchasingFallbackEmail: string;
 };
 
-function env(key: string, fallback: string): string {
-  const value = process.env[key];
+/**
+ * Every NEXT_PUBLIC_* value must be read as a STATIC property of process.env.
+ *
+ * The bundler rewrites `process.env.NEXT_PUBLIC_FOO` to a literal at build time;
+ * it cannot do that for a computed key like `process.env[key]`. Reading these
+ * dynamically leaves `process.env` empty in the browser, so every value silently
+ * falls back to its default and the app appears to ignore its own branding
+ * config — which is exactly what happened before this was fixed. Server-side
+ * code hid the bug, because Node populates process.env for real at runtime.
+ */
+const RAW = {
+  id: process.env.NEXT_PUBLIC_SOFTWARE_ID,
+  name: process.env.NEXT_PUBLIC_SOFTWARE_NAME,
+  tagline: process.env.NEXT_PUBLIC_SOFTWARE_TAGLINE,
+  logoUrl: process.env.NEXT_PUBLIC_SOFTWARE_LOGO_URL,
+  logoIconUrl: process.env.NEXT_PUBLIC_SOFTWARE_LOGO_ICON_URL,
+  logoPreserveColor: process.env.NEXT_PUBLIC_SOFTWARE_LOGO_PRESERVE_COLOR,
+  accent: process.env.NEXT_PUBLIC_BRAND_ACCENT,
+  accentStrong: process.env.NEXT_PUBLIC_BRAND_ACCENT_STRONG,
+  portalEnabled: process.env.NEXT_PUBLIC_ENABLE_SOFTWARE_PORTAL,
+  locationSelectEnabled: process.env.NEXT_PUBLIC_ENABLE_LOCATION_SELECT,
+  rolePermissionManagement: process.env.NEXT_PUBLIC_ENABLE_ROLE_PERMISSION_MANAGEMENT,
+  portalUrl: process.env.NEXT_PUBLIC_PORTAL_URL,
+} as const;
+
+function str(value: string | undefined, fallback: string): string {
   return value && value.trim() ? value.trim() : fallback;
 }
 
-function envBool(key: string, fallback = false): boolean {
-  const value = process.env[key];
+function bool(value: string | undefined, fallback = false): boolean {
   if (value === undefined || value === "") return fallback;
-  return value === "true";
+  return value.trim() === "true";
 }
 
-const softwareId = env("NEXT_PUBLIC_SOFTWARE_ID", "northops-fire");
+const softwareId = str(RAW.id, "northops-fire");
 /** Branch deployments (e.g. northops-fire) skip the map portal unless explicitly enabled. */
 const portalDefault = softwareId === "northops-fire" ? false : true;
 
 export const softwareConfig: SoftwareConfig = {
   id: softwareId,
-  name: env("NEXT_PUBLIC_SOFTWARE_NAME", "Fire Protection"),
-  tagline: env("NEXT_PUBLIC_SOFTWARE_TAGLINE", "Operational Dashboard"),
-  logoUrl: env("NEXT_PUBLIC_SOFTWARE_LOGO_URL", "/northops-logo.png"),
-  logoIconUrl: env("NEXT_PUBLIC_SOFTWARE_LOGO_ICON_URL", "/northops-icon.png"),
-  portalEnabled: envBool("NEXT_PUBLIC_ENABLE_SOFTWARE_PORTAL", portalDefault),
-  locationSelectEnabled: envBool("NEXT_PUBLIC_ENABLE_LOCATION_SELECT", portalDefault),
-  portalUrl: process.env.NEXT_PUBLIC_PORTAL_URL?.trim() || null,
-  rolePermissionManagementEnabled: envBool("NEXT_PUBLIC_ENABLE_ROLE_PERMISSION_MANAGEMENT", true),
+  name: str(RAW.name, "Fire Protection"),
+  tagline: str(RAW.tagline, "Operational Dashboard"),
+  logoUrl: str(RAW.logoUrl, "/northops-logo.png"),
+  logoIconUrl: str(RAW.logoIconUrl, "/northops-icon.png"),
+  portalEnabled: bool(RAW.portalEnabled, portalDefault),
+  locationSelectEnabled: bool(RAW.locationSelectEnabled, portalDefault),
+  portalUrl: RAW.portalUrl?.trim() || null,
+  rolePermissionManagementEnabled: bool(RAW.rolePermissionManagement, true),
+  logoPreserveColor: bool(RAW.logoPreserveColor, false),
+  accentColor: str(RAW.accent, "#2563eb"),
+  accentStrongColor: str(RAW.accentStrong, "#1d4ed8"),
   purchasingFallbackEmail: (
     process.env.NEXT_PUBLIC_PURCHASING_FALLBACK_EMAIL ||
     process.env.PURCHASING_FALLBACK_EMAIL ||
