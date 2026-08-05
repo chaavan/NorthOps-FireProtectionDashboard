@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import { apiRateLimiter, authRateLimiter, writeRateLimiter, getClientIdentifier } from '@/lib/rateLimit';
 import { softwareConfig } from '@/lib/softwareConfig';
+import { isCrmEnabled } from '@/lib/featureFlags';
 
 // Rate limiting configuration per route
 const rateLimitConfig: Record<string, { limiter: typeof apiRateLimiter; path: string }> = {
@@ -18,6 +19,24 @@ export async function proxy(request: NextRequest) {
 
   if (/\.(?:png|jpe?g|gif|svg|webp|ico|woff2?)$/i.test(pathname)) {
     return NextResponse.next();
+  }
+
+  // Hard-disable the CRM module per deployment (NEXT_PUBLIC_ENABLE_CRM=false):
+  // every /crm page redirects home and every /api/crm/* endpoint 404s, so the data
+  // is unreachable by URL even if a role still carries a crm.* permission. Runs
+  // before auth and rate limiting so it short-circuits cleanly. lib/crm/crmAccess.ts
+  // repeats the check so the gate survives any restructuring of this file.
+  if (
+    !isCrmEnabled() &&
+    (pathname === '/crm' || pathname.startsWith('/crm/') || pathname.startsWith('/api/crm'))
+  ) {
+    if (pathname.startsWith('/api/crm')) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+    const url = request.nextUrl.clone();
+    url.pathname = '/';
+    url.search = '';
+    return NextResponse.redirect(url);
   }
 
   const token = await getToken({ req: request });

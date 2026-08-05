@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
+  Building2,
   Calculator,
   CalendarDays,
   ChevronLeft,
@@ -24,6 +25,7 @@ import { canAccessJobDirectory, canAccessCalendar, type PermissionKey } from "@/
 import { useTheme } from "@/lib/ThemeContext";
 import BrandLogo from "@/components/BrandLogo";
 import { softwareConfig } from "@/lib/softwareConfig";
+import { isCrmEnabled } from "@/lib/featureFlags";
 import SurveySidebarEntry from "@/components/survey/SurveySidebarEntry";
 
 interface NavItem {
@@ -208,6 +210,16 @@ export default function DashboardSidebar({
       icon: Calculator,
       requireEstimateAccess: true,
     },
+    ...(isCrmEnabled()
+      ? [
+          {
+            label: "CRM",
+            path: "/crm",
+            icon: Building2,
+            permissionKey: "crm.view" as PermissionKey,
+          },
+        ]
+      : []),
     {
       label: "Manage Users",
       path: "/admin/users",
@@ -228,6 +240,7 @@ export default function DashboardSidebar({
     "/admin/jobs": "jobs.view",
     "/admin/orders": "orders.view",
     "/estimates": "estimates.view",
+    "/crm": "crm.view",
     "/admin/users": "users.view",
     "/dev/survey": "dev.survey.view",
   };
