@@ -57,3 +57,6 @@ __pycache__/
 /tmp/email-previews
 # Transient snapshot used by scripts/scrub-system1-sheet.ts --verify
 .system1-metadata-snapshot.json
+
+# Local dev-server launch config for Claude Code
+.claude/
