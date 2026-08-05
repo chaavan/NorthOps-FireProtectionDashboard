@@ -55,6 +55,7 @@ export async function PUT(
             vendorPartID,
             reorderPoint,
             orderMinimum,
+            doNotStock,
         } = body;
 
         // Validation
@@ -110,6 +111,7 @@ export async function PUT(
 
         const actorUserId = await resolveSessionUserIdForAudit(session);
         const oldCost = existingPart.cost;
+        const costChanged = !catalogCostsEqual(oldCost, costNum);
 
         const beforeProfile = {
             pn: existingPart.pn,
@@ -152,6 +154,17 @@ export async function PUT(
             }
         }
 
+        // "Don't stock": an explicit flag that a part is intentionally not kept in stock.
+        // A don't-stock part has no min-on-hand/order-min, so clear both when it's set.
+        let nextDoNotStock: boolean = existingPart.doNotStock;
+        if (doNotStock !== undefined) {
+            nextDoNotStock = Boolean(doNotStock);
+        }
+        if (nextDoNotStock) {
+            nextReorderPoint = null;
+            nextOrderMinimum = null;
+        }
+
         const thresholdDiffs = collectPartThresholdDiffs(
             {
                 reorderPoint: existingPart.reorderPoint,
@@ -176,11 +189,19 @@ export async function PUT(
                     vendorPartID: afterProfile.vendorPartID,
                     reorderPoint: nextReorderPoint,
                     orderMinimum: nextOrderMinimum,
-                    dateUpdated: formatDateInAppTimeZone(new Date()),
+                    doNotStock: nextDoNotStock,
+                    // Only advance the price-change date when the catalog cost
+                    // actually changes; other profile edits must not touch it.
+                    ...(costChanged
+                        ? {
+                            dateUpdated: formatDateInAppTimeZone(new Date()),
+                            priceUpdatedAt: new Date(),
+                        }
+                        : {}),
                 },
             });
 
-            if (!catalogCostsEqual(oldCost, costNum)) {
+            if (costChanged) {
                 await recordPartCostChange(tx, {
                     partId: id,
                     costBefore: oldCost,

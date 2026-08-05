@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { cache, cacheKeys } from '@/lib/cache';
 import { requirePermission } from '@/lib/permissions';
+import { voidLeadTimeSamplesForJobLine } from '@/lib/vendorLeadTime';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,6 +77,16 @@ export async function POST(request: NextRequest) {
     );
 
     const totalUpdated = updates.reduce((sum, result) => sum + result.count, 0);
+
+    // This endpoint exists to undo a *mistaken* Mark Received, so the lead-time
+    // observation that receive produced is false — drop it.
+    for (const item of normalizedItems) {
+      await voidLeadTimeSamplesForJobLine({
+        jobNumber: item.jobNumber,
+        partNumber: item.partNumber,
+      });
+    }
+
     const uniqueJobNumbers = [...new Set(normalizedItems.map((item) => item.jobNumber))];
 
     uniqueJobNumbers.forEach((jobNumber) => {

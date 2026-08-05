@@ -11,6 +11,7 @@ import { ORDER_CONTEXT_TYPE, recordOperationalDelta } from '@/lib/inventoryLedge
 import { isInventoryReplenishmentJobNumber, type InventoryPoLineItem } from '@/lib/inventoryReorder';
 import { buildPoLineKey } from '@/lib/poLineKey';
 import { softwareConfig } from '@/lib/softwareConfig';
+import { voidLeadTimeSamples } from '@/lib/vendorLeadTime';
 import {
   buildPurchaseOrderCancellationEmailHtml,
   buildPurchaseOrderCancellationTextEmail,
@@ -708,6 +709,18 @@ export async function POST(request: NextRequest) {
         orderIds: [...new Set(matchedPoLines.map((line) => line.orderId))],
         sendError: combinedSendError,
       });
+    }
+
+    // The receipt is being undone, so the lead-time observation it produced is no
+    // longer true — drop it rather than let a mistaken click skew the vendor average.
+    for (const result of results) {
+      if (result.status !== 'CANCELLED' && result.status !== 'EMAIL_FAILED') continue;
+      for (const orderId of result.orderIds) {
+        await voidLeadTimeSamples({
+          purchaseOrderId: orderId,
+          partNumbers: [result.partNumber],
+        });
+      }
     }
 
     affectedJobNumbers.forEach((jobNumber) => {

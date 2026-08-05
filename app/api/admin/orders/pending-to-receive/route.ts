@@ -314,33 +314,15 @@ export async function GET(request: NextRequest) {
       return received >= ordered;
     };
 
-    // Keep inventory POs on On Order while any line is still outstanding — same idea as job
-    // lines staying visible (including fully received ones) until the job is delivered.
-    const activeInventoryPoIds = new Set<string>();
-    for (const po of allPurchaseOrders) {
-      const poItems = (po.items ?? []) as InventoryPoLineItem[];
-      if (!Array.isArray(poItems)) continue;
-
-      let hasInventoryLine = false;
-      let hasOutstanding = false;
-      for (const item of poItems) {
-        if (item.cancelled === true) continue;
-        if (!isInventoryPoLine(po, item)) continue;
-        hasInventoryLine = true;
-        if (!isLineFullyReceivedOnPo(item)) {
-          hasOutstanding = true;
-          break;
-        }
-      }
-      if (hasInventoryLine && hasOutstanding) {
-        activeInventoryPoIds.add(po.id);
-      }
-    }
-
+    // One row per inventory PART, aggregating EVERY open PO line for it — including lines
+    // that are already fully received. Filtering those out (as this used to, per-PO) made a
+    // partially-received part reset to "0 received": the settled PO vanished from the row and
+    // only the outstanding one was counted, so stock went up while the tab still read
+    // "0 of 5 — On Order". The row is kept below only while some line is still outstanding.
     const inventoryItemsMap = new Map<string, InventoryOnOrderRow>();
+    const rowHasOutstanding = new Map<string, boolean>();
 
     for (const po of allPurchaseOrders) {
-      if (!activeInventoryPoIds.has(po.id)) continue;
       const poItems = (po.items ?? []) as InventoryPoLineItem[];
       if (!Array.isArray(poItems)) continue;
 
@@ -373,12 +355,12 @@ export async function GET(request: NextRequest) {
             listNumber: item.listNumber ?? 'STOCK',
             partNumber: item.partNumber ?? '',
             description: item.description ?? null,
-            quantityOrdered: ordered,
+            quantityOrdered: 0,
             quantityNeeded: 0,
             quantityFab: 0,
             quantityPulled: 0,
-            quantityReceived: received,
-            quantityReceivedFromOrder: received,
+            quantityReceived: 0,
+            quantityReceivedFromOrder: 0,
             pickupFromSupplier: false,
             supplierDeliveryToJobsite: false,
             vendor: po.supplier ?? null,
@@ -400,16 +382,24 @@ export async function GET(request: NextRequest) {
         if (!row.vendor && po.supplier) {
           row.vendor = po.supplier;
         }
+        if (!isLineFullyReceivedOnPo(item)) {
+          rowHasOutstanding.set(lineKey, true);
+        }
       }
     }
 
-    const inventoryJob = inventoryItemsMap.size > 0
+    // A part leaves On Order once every one of its PO lines is fully received.
+    const outstandingInventoryRows = Array.from(inventoryItemsMap.entries())
+      .filter(([lineKey]) => rowHasOutstanding.get(lineKey) === true)
+      .map(([, row]) => row);
+
+    const inventoryJob = outstandingInventoryRows.length > 0
       ? {
           jobNumber: INVENTORY_REORDER_JOB_NUMBER,
           jobName: INVENTORY_REORDER_JOB_NAME,
           area: null,
           isInventoryReplenishment: true as const,
-          items: Array.from(inventoryItemsMap.values()).map((item) => ({
+          items: outstandingInventoryRows.map((item) => ({
             ...item,
             purchaseOrders: item.purchaseOrders.sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime()),
             isFullyReceived: item.quantityOrdered > 0 && item.quantityReceived >= item.quantityOrdered,

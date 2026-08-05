@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { buildPoLineKey } from '@/lib/poLineKey';
+import { isDynamicReorderEnabled } from '@/lib/featureFlags';
 
 export const INVENTORY_REORDER_JOB_NUMBER = 'INVENTORY';
 export const INVENTORY_REORDER_LIST_NUMBER = 'STOCK';
@@ -84,6 +85,119 @@ export function remainingInventoryReorderQty(params: {
   return Math.max(0, suggested - openQty);
 }
 
+/**
+ * Committed-but-unfulfilled demand on jobs that haven't been delivered yet: units a
+ * live job still needs after FAB, shop pulls and vendor receipts.
+ *
+ * Everything else feeding the suggestion is historical. This is the only
+ * forward-looking signal — it's what stops us suggesting nothing while a job next week
+ * still needs 500 of a part.
+ *
+ * Lives here rather than in lib/inventoryLevels/usage.ts because that module is
+ * "server-only" and this one is reachable from the client bundle.
+ */
+export async function getOpenJobDemand(db: DbClient = prisma): Promise<Map<string, number>> {
+  const rows = await db.$queryRaw<Array<{ part_number: string; units: number }>>`
+    SELECT part_number,
+           SUM(GREATEST(
+             quantity_needed
+               - COALESCE(quantity_fab, 0)
+               - COALESCE(pulled, 0)
+               - COALESCE(quantity_received_from_order, 0), 0))::int AS units
+    FROM jobs
+    WHERE COALESCE(delivered, false) = false
+    GROUP BY part_number
+    HAVING SUM(GREATEST(
+             quantity_needed
+               - COALESCE(quantity_fab, 0)
+               - COALESCE(pulled, 0)
+               - COALESCE(quantity_received_from_order, 0), 0)) > 0
+  `;
+  const map = new Map<string, number>();
+  for (const row of rows) {
+    const pn = String(row.part_number ?? '').trim().toUpperCase();
+    if (!pn) continue;
+    map.set(pn, (map.get(pn) ?? 0) + Math.max(0, Number(row.units) || 0));
+  }
+  return map;
+}
+
+export type ReorderSuggestion = {
+  /** Units to put on the next order. 0 means the part shouldn't appear in To Order. */
+  suggestedQty: number;
+  /** onHand + everything already on an open PO — what we'll have once orders land. */
+  inventoryPosition: number;
+  /** The level we're topping back up to (only meaningful in dynamic mode). */
+  targetLevel: number;
+};
+
+/**
+ * How much of an inventory part to order.
+ *
+ * Static mode (default): suggest the flat Order Min, less whatever is already on an
+ * open PO. Simple, and what purchasing is used to.
+ *
+ * Dynamic mode (NEXT_PUBLIC_ENABLE_DYNAMIC_REORDER=true): a classic order-up-to (s,S)
+ * policy driven by the usage-derived levels —
+ *
+ *   s = minOnHand                          reorder when position drops to/below this
+ *   S = minOnHand + orderMinimum           top back up to this
+ *   position = onHand + openPoQty - openJobDemand
+ *   suggestedQty = S - position
+ *
+ * Two improvements over static. It accounts for HOW FAR below the reorder point stock
+ * has fallen — a part at 2 when the minimum is 50 gets more than one at 49 — and it
+ * subtracts stock that live jobs have already claimed, so the shelf can't look full
+ * while 500 units are spoken for by a job next week.
+ *
+ * Both modes drive the suggestion off inventory position, so once an order covering the
+ * need is sent the part drops off To Order and lives on On Order until it's received.
+ * That lifecycle is what the client asked for and both modes preserve it.
+ */
+export function getInventoryReorderSuggestion(params: {
+  onHand: number;
+  minOnHand: number;
+  orderMinimum: number;
+  openPoQty: number;
+  /** Units already committed to undelivered jobs — stock that is spoken for. */
+  openJobDemand?: number;
+  dynamic: boolean;
+}): ReorderSuggestion {
+  const onHand = Math.max(0, params.onHand);
+  const minOnHand = Math.max(0, params.minOnHand);
+  const orderMinimum = Math.max(0, params.orderMinimum);
+  const openPoQty = Math.max(0, params.openPoQty);
+  const openJobDemand = Math.max(0, params.openJobDemand ?? 0);
+  const targetLevel = minOnHand + orderMinimum;
+
+  if (!params.dynamic) {
+    // Static: trigger on stock alone, then net out what's already coming. Committed
+    // job demand is ignored, matching the behaviour purchasing has today.
+    const inventoryPosition = onHand + openPoQty;
+    if (onHand > minOnHand) {
+      return { suggestedQty: 0, inventoryPosition, targetLevel };
+    }
+    return {
+      suggestedQty: remainingInventoryReorderQty({ orderMinimum, openPoQty }),
+      inventoryPosition,
+      targetLevel,
+    };
+  }
+
+  // Dynamic: work from available-to-promise — what's on the shelf, plus what's on
+  // order, minus what live jobs have already claimed. Without the last term the shelf
+  // looks full while 500 units are already spoken for by a job next week.
+  const inventoryPosition = onHand + openPoQty - openJobDemand;
+  if (inventoryPosition > minOnHand) {
+    return { suggestedQty: 0, inventoryPosition, targetLevel };
+  }
+  return {
+    suggestedQty: Math.max(0, targetLevel - inventoryPosition),
+    inventoryPosition,
+    targetLevel,
+  };
+}
+
 function toNonNegativeInt(value: unknown): number {
   const n = Number(value);
   if (!Number.isFinite(n) || n < 0) return 0;
@@ -136,6 +250,48 @@ export async function loadInventoryPoOutstandingQty(
   return getInventoryPoOutstandingQty(allItems);
 }
 
+/**
+ * Returns the ids of parts a user has snoozed (dismissed) from auto-reorder, after
+ * re-arming any that have recovered above their reorder point. Wrapped in try/catch so
+ * the To Order tab still loads if the `reorder_snoozed_at` migration hasn't been applied
+ * yet (the snooze feature is simply inert until then).
+ */
+export async function loadSnoozedReorderPartIds(
+  db: DbClient = prisma,
+): Promise<Set<string>> {
+  try {
+    const snoozed = await db.part.findMany({
+      where: { reorderSnoozedAt: { not: null } },
+      select: { id: true, quantity: true, reorderPoint: true },
+    });
+    if (snoozed.length === 0) return new Set();
+
+    // Re-arm parts that have been restocked back above their reorder point so a future
+    // dip re-suggests them; keep the rest suppressed.
+    const rearmIds: string[] = [];
+    const stillSnoozed = new Set<string>();
+    for (const part of snoozed) {
+      const onHand = Number(part.quantity ?? 0);
+      const minOnHand = Number(part.reorderPoint ?? 0);
+      if (minOnHand > 0 && onHand > minOnHand) {
+        rearmIds.push(part.id);
+      } else {
+        stillSnoozed.add(part.id);
+      }
+    }
+    if (rearmIds.length > 0) {
+      await db.part.updateMany({
+        where: { id: { in: rearmIds } },
+        data: { reorderSnoozedAt: null },
+      });
+    }
+    return stillSnoozed;
+  } catch {
+    // Column not present yet (migration pending) — treat nothing as snoozed.
+    return new Set();
+  }
+}
+
 export async function listPartsNeedingReorder(
   db: DbClient = prisma,
 ): Promise<InventoryReorderCandidate[]> {
@@ -159,18 +315,34 @@ export async function listPartsNeedingReorder(
   });
 
   const openPoByPart = await loadInventoryPoOutstandingQty(db);
+  const snoozedPartIds = await loadSnoozedReorderPartIds(db);
+  const dynamic = isDynamicReorderEnabled();
+  // Only the dynamic policy consumes committed job demand; skip the query otherwise.
+  const openJobDemand = dynamic ? await getOpenJobDemand(db) : new Map<string, number>();
   const candidates: InventoryReorderCandidate[] = [];
 
   for (const part of parts) {
+    // Skip parts the user dismissed ("cancelled") from the To Order tab. They stay
+    // suppressed until stock recovers above the reorder point (see loadSnoozedReorderPartIds).
+    if (snoozedPartIds.has(part.id)) continue;
+
     const onHand = toNonNegativeInt(part.quantity);
     const minOnHand = toNonNegativeInt(part.reorderPoint);
     const orderMinimum = toNonNegativeInt(part.orderMinimum);
     if (minOnHand <= 0 || orderMinimum <= 0) continue;
-    if (onHand > minOnHand) continue;
 
     const openPoQty = openPoByPart.get(inventoryPoLineKey(part.pn)) ?? 0;
-    const remainingToOrder = remainingInventoryReorderQty({ orderMinimum, openPoQty });
-    if (remainingToOrder <= 0) continue;
+    const suggestion = getInventoryReorderSuggestion({
+      onHand,
+      minOnHand,
+      orderMinimum,
+      openPoQty,
+      openJobDemand: openJobDemand.get(part.pn.trim().toUpperCase()) ?? 0,
+      dynamic,
+    });
+    // 0 => either stock is above the reorder point, or an open PO already covers the
+    // need. Either way the part belongs on "On Order", not here.
+    if (suggestion.suggestedQty <= 0) continue;
 
     candidates.push({
       partId: part.id,
@@ -181,8 +353,8 @@ export async function listPartsNeedingReorder(
       onHand,
       minOnHand,
       orderMinimum,
-      suggestedQty: orderMinimum,
-      remainingToOrder,
+      suggestedQty: suggestion.suggestedQty,
+      remainingToOrder: suggestion.suggestedQty,
       openPoQty,
     });
   }
@@ -243,8 +415,9 @@ export function buildInventoryPendingToOrderGroup(
       minOnHand: candidate.minOnHand,
       orderMinimum: candidate.orderMinimum,
       isInPurchaseOrder: candidate.openPoQty > 0,
-      canCancel: false,
-      cancelBlockReason: 'Inventory replenishment is automatic based on stock levels',
+      // Inventory suggestions can be dismissed from the To Order tab; cancelling snoozes
+      // the part (Part.reorderSnoozedAt) until stock recovers above its reorder point.
+      canCancel: true,
     })),
   };
 }
