@@ -11,6 +11,7 @@ import {
   updateStandaloneEstimateBidStatus,
 } from "@/lib/estimate/estimateService";
 import type { StandaloneEstimateBidStatus } from "@/lib/estimateTypes";
+import { syncCrmOpportunitiesFromEstimate } from "@/lib/crm/crmService";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +59,10 @@ export async function PATCH(
               : null,
           userEmail: access.userEmail,
         });
+
+    if (!body.restore) {
+      await syncCrmOpportunitiesFromEstimate(estimateId, access.userEmail);
+    }
 
     return NextResponse.json({ estimate });
   } catch (error) {

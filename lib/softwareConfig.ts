@@ -8,6 +8,12 @@ export type SoftwareConfig = {
   locationSelectEnabled: boolean;
   portalUrl: string | null;
   rolePermissionManagementEnabled: boolean;
+  /**
+   * Address that purchase-order mail falls back to when a supplier has no
+   * configured recipients. Empty means "no fallback" — callers must filter it
+   * out rather than mailing an empty address.
+   */
+  purchasingFallbackEmail: string;
 };
 
 function env(key: string, fallback: string): string {
@@ -35,6 +41,13 @@ export const softwareConfig: SoftwareConfig = {
   locationSelectEnabled: envBool("NEXT_PUBLIC_ENABLE_LOCATION_SELECT", portalDefault),
   portalUrl: process.env.NEXT_PUBLIC_PORTAL_URL?.trim() || null,
   rolePermissionManagementEnabled: envBool("NEXT_PUBLIC_ENABLE_ROLE_PERMISSION_MANAGEMENT", true),
+  purchasingFallbackEmail: (
+    process.env.NEXT_PUBLIC_PURCHASING_FALLBACK_EMAIL ||
+    process.env.PURCHASING_FALLBACK_EMAIL ||
+    ""
+  )
+    .trim()
+    .toLowerCase(),
 };
 
 /** URL for "back to software selection" on login pages. */

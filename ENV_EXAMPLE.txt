@@ -28,6 +28,18 @@ NEXT_PUBLIC_ENABLE_ESTIMATE_TAB=false
 # NEXT_PUBLIC_ESTIMATE_WORK_DAY_HOURS=8
 # NEXT_PUBLIC_ESTIMATE_PRODUCTION_RATE_SCALE=1.12
 
+# CRM module: the /crm route, its sidebar entry, and /api/crm/*.
+# On unless set to "false". Access is additionally gated by the crm.view
+# permission, so enabling this does not by itself expose the CRM to anyone.
+NEXT_PUBLIC_ENABLE_CRM=true
+
+# Inventory replenishment suggests an order-up-to quantity — how far below the
+# reorder point stock has fallen, less demand already committed to open jobs —
+# instead of a flat Order Min. Off unless "true".
+# Production ships this off; the demo turns it on because the order-up-to
+# suggestion is the visible payoff of the inventory levels engine.
+NEXT_PUBLIC_ENABLE_DYNAMIC_REORDER=true
+
 # ===== SOFTWARE IDENTITY & PORTAL =====
 # Per-deployment branding (each branch/software instance sets its own values).
 NEXT_PUBLIC_SOFTWARE_ID=northops-fire
@@ -58,10 +70,22 @@ NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=pk.your-mapbox-public-token
 # Password required to unlock Material Catalog editing.
 MATERIAL_CATALOG_EDIT_PASSWORD=change-this-catalog-password
 
+# ===== DEMO SEEDS =====
+# Each seed refuses to run unless its confirm variable is set, because they write
+# to whatever database DATABASE_URL points at and clean their own prior rows first.
+# All seeded data is synthetic; see the header of each script.
+#   CRM_DEMO_SEED_CONFIRM=I_UNDERSTAND      npm run db:seed-crm-demo
+#   PARTS_DEMO_SEED_CONFIRM=I_UNDERSTAND    npm run db:seed-parts-demo
+#   MATERIAL_CATALOG_DEMO_PRICES_CONFIRM=I_UNDERSTAND npm run db:seed-material-catalog-demo-prices
+#   ESTIMATE_DEMO_PRICING_CONFIRM=I_UNDERSTAND        npm run db:seed-estimate-demo-pricing
+# Pass --clean to a seed to remove just its own rows.
+# Optional: override the actor stamped on seeded CRM rows (default demo-seed@northops.local).
+# CRM_DEMO_SEED_ACTOR=demo-seed@northops.local
+
 # ===== N8N WEBHOOKS (Deprecated - No longer needed) =====
 # Native backorder processing is now built-in. These are kept for backwards compatibility.
-# N8N_WEBHOOK_URL=https://curran.app.n8n.cloud/webhook-test/email-suppliers
-# N8N_BACKORDER_WEBHOOK_URL=https://curran.app.n8n.cloud/webhook-test/backorder-upload
+# N8N_WEBHOOK_URL=https://n8n.example.com/webhook-test/email-suppliers
+# N8N_BACKORDER_WEBHOOK_URL=https://n8n.example.com/webhook-test/backorder-upload
 
 # ===== PURCHASE ORDER EMAIL (Optional — Vendor Orders) =====
 # Leave unset for dashboard-only purchase orders (no supplier email, no n8n).
@@ -102,9 +126,13 @@ NEXTAUTH_URL="http://localhost:3000"
 NEXTAUTH_SECRET="generate-with-openssl-rand-base64-32"
 
 # Public dashboard URL for links in outbound emails (job created, access granted, notes, etc.).
-# Production: https://tfp.tools — must match the domain users open in the browser.
-# If unset, falls back to NEXTAUTH_URL (legacy Vercel hosts are rewritten to tfp.tools).
-# PUBLIC_APP_URL="https://tfp.tools"
+# Must match the domain users actually open in the browser, or emailed links land
+# on the wrong host. If unset, falls back to NEXTAUTH_URL, then to localhost.
+# PUBLIC_APP_URL="https://demo.example.com"
+
+# Address that purchase-order mail falls back to when a supplier has no configured
+# recipients. Leave unset to disable the fallback (no mail is addressed to it).
+# NEXT_PUBLIC_PURCHASING_FALLBACK_EMAIL="purchasing@example.com"
 
 # Initial Admin User (for first-time setup)
 ADMIN_EMAIL="admin@yourdomain.com"

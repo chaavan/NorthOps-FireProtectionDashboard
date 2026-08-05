@@ -187,7 +187,7 @@ const LOCKED_IDENTIFIER_FIELDS: Array<keyof Pick<ImportParsedJobInfo, 'jobNumber
   'listNumber',
 ];
 
-const JOB_IMPORT_PROMPT = `You parse Total Fire Protection material picksheets from OCR text.
+const JOB_IMPORT_PROMPT = `You parse fire-protection material picksheets from OCR text.
 
 Return one JSON object with these top-level keys:
 - jobInfo
@@ -196,7 +196,7 @@ Return one JSON object with these top-level keys:
 - lineItems
 
 Rules:
-- Focus on Total Fire Protection material picksheets and scanned PDFs with handwritten annotations.
+- Focus on fire-protection material picksheets and scanned PDFs with handwritten annotations.
 - Use the OCR text only. Never invent values.
 - Preserve line-item order exactly as it appears in the material table.
 - Never merge adjacent rows unless the OCR text clearly shows one row.
@@ -210,7 +210,7 @@ Rules:
 - Include every line item you can identify from the material section.
 - Return JSON only.`;
 
-const JOB_IMPORT_VISION_PROMPT = `You verify Total Fire Protection material picksheet line items from an uploaded PDF and OCR grounding text.
+const JOB_IMPORT_VISION_PROMPT = `You verify fire-protection material picksheet line items from an uploaded PDF and OCR grounding text.
 
 Return one JSON object with only this key:
 - lineItems
@@ -2182,7 +2182,7 @@ async function updateJobImportRecord(importId: string, update: any): Promise<Job
   });
 }
 
-const JOB_IMPORT_HEADER_PROMPT = `You extract Total Fire Protection material picksheet **header** fields from OCR text for the pages provided.
+const JOB_IMPORT_HEADER_PROMPT = `You extract fire-protection material picksheet **header** fields from OCR text for the pages provided.
 
 Return one JSON object with ONLY these top-level keys:
 - jobInfo

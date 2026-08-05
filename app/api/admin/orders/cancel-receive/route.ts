@@ -10,6 +10,8 @@ import { findPartRowByLookupVariants } from '@/lib/partsDatabase';
 import { ORDER_CONTEXT_TYPE, recordOperationalDelta } from '@/lib/inventoryLedger';
 import { isInventoryReplenishmentJobNumber, type InventoryPoLineItem } from '@/lib/inventoryReorder';
 import { buildPoLineKey } from '@/lib/poLineKey';
+import { softwareConfig } from '@/lib/softwareConfig';
+import { voidLeadTimeSamples } from '@/lib/vendorLeadTime';
 import {
   buildPurchaseOrderCancellationEmailHtml,
   buildPurchaseOrderCancellationTextEmail,
@@ -216,7 +218,7 @@ export async function POST(request: NextRequest) {
     });
     const webhookUrl = process.env.PURCHASE_ORDER_EMAIL_WEBHOOK_URL;
     const purchaseOrderEmailEnabled = isPurchaseOrderEmailEnabled();
-    const purchasingEmail = normalize(process.env.PURCHASING_FALLBACK_EMAIL || 'purchasing@totalfire.biz').toLowerCase();
+    const purchasingEmail = softwareConfig.purchasingFallbackEmail;
 
     const results: CancelReceiveResult[] = [];
     const affectedJobNumbers = new Set<string>();
@@ -281,8 +283,10 @@ export async function POST(request: NextRequest) {
             }>();
             matchedPoLines.forEach((line) => {
               if (!poGroups.has(line.orderId)) {
-                const to = line.recipientTo.length > 0 ? [...new Set(line.recipientTo)] : [purchasingEmail];
-                const cc = [...new Set([...line.recipientCc, purchasingEmail])];
+                const to = line.recipientTo.length > 0
+                  ? [...new Set(line.recipientTo)]
+                  : (purchasingEmail ? [purchasingEmail] : []);
+                const cc = [...new Set([...line.recipientCc, purchasingEmail])].filter(Boolean);
                 poGroups.set(line.orderId, {
                   orderId: line.orderId,
                   orderNumber: line.orderNumber,
@@ -322,7 +326,7 @@ export async function POST(request: NextRequest) {
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     action: 'cancel_order',
-                    subject: `Total Fire Protection Order Cancellation | ${group.vendorPoLabel} | ${group.supplier}`,
+                    subject: `${softwareConfig.name} Order Cancellation | ${group.vendorPoLabel} | ${group.supplier}`,
                     to: group.recipientTo.join(','),
                     cc: group.recipientCc.join(','),
                     orderNumber: group.orderNumber,
@@ -492,8 +496,10 @@ export async function POST(request: NextRequest) {
         matchedPoLines.forEach((line) => {
           const groupKey = line.orderId;
           if (!poGroups.has(groupKey)) {
-            const to = line.recipientTo.length > 0 ? [...new Set(line.recipientTo)] : [purchasingEmail];
-            const cc = [...new Set([...line.recipientCc, purchasingEmail])];
+            const to = line.recipientTo.length > 0
+                  ? [...new Set(line.recipientTo)]
+                  : (purchasingEmail ? [purchasingEmail] : []);
+            const cc = [...new Set([...line.recipientCc, purchasingEmail])].filter(Boolean);
             poGroups.set(groupKey, {
               orderId: line.orderId,
               orderNumber: line.orderNumber,
@@ -540,7 +546,7 @@ export async function POST(request: NextRequest) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   action: 'cancel_order',
-                  subject: `Total Fire Protection Order Cancellation | ${group.vendorPoLabel} | ${group.supplier}`,
+                  subject: `${softwareConfig.name} Order Cancellation | ${group.vendorPoLabel} | ${group.supplier}`,
                   to: group.recipientTo.join(','),
                   cc: group.recipientCc.join(','),
                   orderNumber: group.orderNumber,
@@ -703,6 +709,18 @@ export async function POST(request: NextRequest) {
         orderIds: [...new Set(matchedPoLines.map((line) => line.orderId))],
         sendError: combinedSendError,
       });
+    }
+
+    // The receipt is being undone, so the lead-time observation it produced is no
+    // longer true — drop it rather than let a mistaken click skew the vendor average.
+    for (const result of results) {
+      if (result.status !== 'CANCELLED' && result.status !== 'EMAIL_FAILED') continue;
+      for (const orderId of result.orderIds) {
+        await voidLeadTimeSamples({
+          purchaseOrderId: orderId,
+          partNumbers: [result.partNumber],
+        });
+      }
     }
 
     affectedJobNumbers.forEach((jobNumber) => {

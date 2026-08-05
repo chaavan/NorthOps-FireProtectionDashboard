@@ -3,6 +3,7 @@
 import React from 'react';
 import { Document, Page, Text, View, Image, StyleSheet, Font } from '@react-pdf/renderer';
 import { formatDateInAppTimeZone } from '@/lib/timezone';
+import { softwareConfig } from '@/lib/softwareConfig';
 
 interface LineItemWithCost {
   partNumber: string | null;
@@ -340,7 +341,7 @@ const PurchaseOrderPDF: React.FC<PurchaseOrderPDFProps> = ({
                 cache={false}
               />
               <View style={styles.companyInfo}>
-                <Text style={styles.companyName}>Total Fire Protection</Text>
+                <Text style={styles.companyName}>{softwareConfig.name}</Text>
                 <Text style={styles.companySubtitle}>Fire-Protection Materials Shop</Text>
               </View>
             </View>
@@ -355,7 +356,7 @@ const PurchaseOrderPDF: React.FC<PurchaseOrderPDFProps> = ({
         <View style={styles.infoSection}>
           <View style={styles.infoBox}>
             <Text style={styles.infoTitle}>Bill To:</Text>
-            <Text style={styles.infoText}>Total Fire Protection</Text>
+            <Text style={styles.infoText}>{softwareConfig.name}</Text>
             <Text style={styles.infoText}>Fire-Protection Materials Shop</Text>
           </View>
           <View style={styles.infoBox}>

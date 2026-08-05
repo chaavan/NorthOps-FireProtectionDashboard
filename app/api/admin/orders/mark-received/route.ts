@@ -14,6 +14,7 @@ import { ORDER_CONTEXT_TYPE, recordOperationalDelta } from '@/lib/inventoryLedge
 import { partNumberLookupVariants } from '@/lib/inventoryQuantity';
 import { findPartRowByLookupVariants } from '@/lib/partsDatabase';
 import { requirePermission } from '@/lib/permissions';
+import { recordLeadTimeSample } from '@/lib/vendorLeadTime';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,26 @@ interface ItemToMark {
   partNumber: string;
   quantityReceived?: number | null;
   orderId?: string | null;
+}
+
+/**
+ * A vendor lead-time observation queued during a receive. Written after the
+ * transaction commits — bookkeeping must never be able to abort a receive.
+ */
+type LeadTimeSampleDraft = {
+  vendorKey: string | null;
+  purchaseOrderId: string;
+  orderNumber: string | null;
+  partNumber: string;
+  partId: string | null;
+  orderKind: string | null;
+  sentAt: Date;
+};
+
+async function flushLeadTimeSamples(samples: LeadTimeSampleDraft[]): Promise<void> {
+  for (const sample of samples) {
+    await recordLeadTimeSample(sample);
+  }
 }
 
 function toNonNegativeInt(value: unknown): number {
@@ -40,13 +61,24 @@ async function markInventoryItemsReceived(
     orderId?: string | null;
   }>,
   actorUserId: string | null,
+  leadTimeSamples: LeadTimeSampleDraft[],
 ): Promise<number> {
   if (items.length === 0) return 0;
 
   let updatedCount = 0;
   await prisma.$transaction(async (tx) => {
     const purchaseOrders = await tx.purchaseOrder.findMany({
-      select: { id: true, orderNumber: true, items: true, orderKind: true },
+      select: {
+        id: true,
+        orderNumber: true,
+        items: true,
+        orderKind: true,
+        sentAt: true,
+        supplier: true,
+      },
+      // Oldest first: a part can sit on several open inventory POs, and stock that
+      // arrives should settle the earliest order first (FIFO).
+      orderBy: { sentAt: 'asc' },
     });
 
     const inventoryPurchaseOrders = purchaseOrders.filter((po) => {
@@ -61,88 +93,137 @@ async function markInventoryItemsReceived(
       const partNumber = item.partNumber.trim();
       if (!partNumber) continue;
 
-      const scopedOrderId = item.orderId?.trim() || null;
-      const purchaseOrdersToUpdate = scopedOrderId
-        ? inventoryPurchaseOrders.filter((po) => po.id === scopedOrderId)
-        : inventoryPurchaseOrders;
-
-      for (const po of purchaseOrdersToUpdate) {
+      // The On Order tab shows ONE row per inventory part, aggregating every open PO
+      // line for it — so the quantity the user typed is the row total, not one PO's
+      // share. Collect all of that part's open lines and spread the total across them
+      // FIFO. (Previously this was scoped to item.orderId, i.e. only the NEWEST PO, so
+      // receiving a part that sat on two POs updated one and left the other outstanding
+      // forever: stock went up, yet the row stayed "On Order" with 0 received.)
+      type LineRef = {
+        po: (typeof inventoryPurchaseOrders)[number];
+        index: number;
+        ordered: number;
+        priorReceived: number;
+      };
+      const lines: LineRef[] = [];
+      for (const po of inventoryPurchaseOrders) {
         const poItems = (po.items ?? []) as InventoryPoLineItem[];
         if (!Array.isArray(poItems)) continue;
-
-        let lineUpdated = false;
-        const nextItems: InventoryPoLineItem[] = [];
-        for (const poItem of poItems) {
-          if (poItem.cancelled === true) {
-            nextItems.push(poItem);
-            continue;
-          }
-          const poPartNumber = String(poItem.partNumber ?? '').trim();
-          if (poPartNumber !== partNumber) {
-            nextItems.push(poItem);
-            continue;
-          }
+        poItems.forEach((poItem, index) => {
+          if (poItem.cancelled === true) return;
+          if (String(poItem.partNumber ?? '').trim() !== partNumber) return;
           if (
             po.orderKind !== 'INVENTORY' &&
             !isInventoryReplenishmentJobNumber(poItem.jobNumber)
           ) {
-            nextItems.push(poItem);
-            continue;
+            return;
           }
+          lines.push({
+            po,
+            index,
+            ordered: toNonNegativeInt(poItem.quantityOrdered),
+            priorReceived: toNonNegativeInt(poItem.quantityReceived),
+          });
+        });
+      }
+      if (lines.length === 0) continue;
 
-          const ordered = toNonNegativeInt(poItem.quantityOrdered);
-          const priorReceived = toNonNegativeInt(poItem.quantityReceived);
-          let newReceived = priorReceived;
-          if (item.quantityReceived !== undefined && item.quantityReceived !== null) {
-            newReceived = toNonNegativeInt(item.quantityReceived);
-          } else {
-            newReceived = ordered;
-          }
-          if (newReceived > ordered) {
-            newReceived = ordered;
-          }
+      const orderedTotal = lines.reduce((sum, l) => sum + l.ordered, 0);
+      const priorTotal = lines.reduce((sum, l) => sum + l.priorReceived, 0);
 
-          const delta = newReceived - priorReceived;
-          if (delta > 0) {
-            const part =
-              poItem.partId
-                ? await tx.part.findUnique({ where: { id: poItem.partId } })
-                : await findPartRowByLookupVariants(
-                    partNumberLookupVariants(partNumber),
-                    tx,
-                  );
-            if (!part) {
-              throw new Error(`Part not found for inventory receive: ${partNumber}`);
-            }
-            await recordOperationalDelta(tx, {
-              partId: part.id,
-              signedDelta: delta,
-              movementType: MovementType.UNPULL,
-              contextType: ORDER_CONTEXT_TYPE,
-              contextId: po.id,
-              actorUserId,
-              note: `Inventory PO receive | PO ${po.orderNumber}`,
-            });
-          }
+      // Absolute row total (matching what the tab displays), not an increment.
+      let targetTotal =
+        item.quantityReceived !== undefined && item.quantityReceived !== null
+          ? toNonNegativeInt(item.quantityReceived)
+          : orderedTotal;
+      if (targetTotal > orderedTotal) targetTotal = orderedTotal;
 
-          lineUpdated = true;
-          nextItems.push({
+      // Allocate the total across the lines, oldest PO first.
+      let remaining = targetTotal;
+      const allocation = new Map<LineRef, number>();
+      for (const line of lines) {
+        const give = Math.min(line.ordered, Math.max(0, remaining));
+        allocation.set(line, give);
+        remaining -= give;
+      }
+
+      // Resolve the part once — every line here is the same part number.
+      const partIdHint = lines
+        .map((l) => ((l.po.items as InventoryPoLineItem[])[l.index]?.partId ?? null))
+        .find((id): id is string => !!id);
+      const totalDelta = targetTotal - priorTotal;
+      let part: { id: string } | null = null;
+      if (totalDelta > 0) {
+        part = partIdHint
+          ? await tx.part.findUnique({ where: { id: partIdHint } })
+          : await findPartRowByLookupVariants(partNumberLookupVariants(partNumber), tx);
+        if (!part) {
+          throw new Error(`Part not found for inventory receive: ${partNumber}`);
+        }
+      }
+
+      // Apply per PO, so the ledger entry and lead-time sample stay attributed to the
+      // specific order the stock settled against.
+      const touchedPoIds = new Set<string>();
+      for (const po of inventoryPurchaseOrders) {
+        const poLines = lines.filter((l) => l.po.id === po.id);
+        if (poLines.length === 0) continue;
+
+        const poDelta = poLines.reduce(
+          (sum, l) => sum + ((allocation.get(l) ?? 0) - l.priorReceived),
+          0,
+        );
+
+        const poItems = [...((po.items ?? []) as InventoryPoLineItem[])];
+        for (const line of poLines) {
+          const newReceived = allocation.get(line) ?? 0;
+          const poItem = poItems[line.index];
+          poItems[line.index] = {
             ...poItem,
             jobNumber: poItem.jobNumber ?? item.jobNumber,
             listNumber: poItem.listNumber ?? item.listNumber ?? INVENTORY_REORDER_LIST_NUMBER,
             quantityReceived: newReceived,
-            fullyReceived: ordered > 0 && newReceived >= ordered,
+            fullyReceived: line.ordered > 0 && newReceived >= line.ordered,
+          };
+
+          // Lead-time clock stops on this line's FIRST arrival (later partial receipts
+          // don't restart it). Queued and written after the tx commits so lead-time
+          // bookkeeping can never abort a receive.
+          if (line.priorReceived === 0 && newReceived > 0 && part) {
+            leadTimeSamples.push({
+              vendorKey: po.supplier ?? null,
+              purchaseOrderId: po.id,
+              orderNumber: po.orderNumber,
+              partNumber,
+              partId: part.id,
+              orderKind: po.orderKind,
+              sentAt: po.sentAt,
+            });
+          }
+        }
+
+        if (poDelta > 0 && part) {
+          await recordOperationalDelta(tx, {
+            partId: part.id,
+            signedDelta: poDelta,
+            movementType: MovementType.UNPULL,
+            contextType: ORDER_CONTEXT_TYPE,
+            contextId: po.id,
+            actorUserId,
+            note: `Inventory PO receive | PO ${po.orderNumber}`,
           });
         }
 
-        if (lineUpdated) {
-          await tx.purchaseOrder.update({
-            where: { id: po.id },
-            data: { items: nextItems },
-          });
-          updatedCount += 1;
-        }
+        await tx.purchaseOrder.update({
+          where: { id: po.id },
+          data: { items: poItems },
+        });
+        // Keep the in-memory copy in step, so a second item in this same request that
+        // touches the same PO sees the updated quantities.
+        po.items = poItems as unknown as typeof po.items;
+        touchedPoIds.add(po.id);
       }
+      updatedCount += touchedPoIds.size;
     }
   });
 
@@ -205,9 +286,14 @@ export async function POST(request: NextRequest) {
 
     const actorUserId = await resolveSessionUserIdForAudit(session);
     let totalUpdated = 0;
+    const leadTimeSamples: LeadTimeSampleDraft[] = [];
 
     if (inventoryItems.length > 0) {
-      const inventoryUpdated = await markInventoryItemsReceived(inventoryItems, actorUserId);
+      const inventoryUpdated = await markInventoryItemsReceived(
+        inventoryItems,
+        actorUserId,
+        leadTimeSamples,
+      );
       if (inventoryUpdated === 0) {
         return NextResponse.json(
           { error: 'No inventory purchase order lines were updated. Refresh and try again.' },
@@ -218,6 +304,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (jobItems.length === 0) {
+      await flushLeadTimeSamples(leadTimeSamples);
       return NextResponse.json({
         success: true,
         updatedCount: totalUpdated,
@@ -241,6 +328,16 @@ export async function POST(request: NextRequest) {
         )),
       },
     });
+
+    // Purchase orders referenced by the incoming job lines, for the lead-time clock.
+    const jobOrderIds = [...new Set(jobItems.map((i) => i.orderId).filter((id): id is string => !!id))];
+    const jobPurchaseOrders = jobOrderIds.length > 0
+      ? await prisma.purchaseOrder.findMany({
+          where: { id: { in: jobOrderIds } },
+          select: { id: true, orderNumber: true, sentAt: true, supplier: true, orderKind: true },
+        })
+      : [];
+    const poById = new Map(jobPurchaseOrders.map((po) => [po.id, po]));
 
     // Create a map for quick lookup
     const recordMap = new Map<string, (typeof currentRecords)[number]>();
@@ -295,9 +392,25 @@ export async function POST(request: NextRequest) {
       
       // Only mark as fully received if quantityReceivedFromOrder >= quantityOrdered
       // If quantityOrdered is null, we can't determine, so mark as received
-      const isFullyReceived = quantityOrdered === null 
-        ? true 
+      const isFullyReceived = quantityOrdered === null
+        ? true
         : quantityReceivedFromOrder >= quantityOrdered;
+
+      // Stop the vendor lead-time clock on this line's FIRST receipt. Requires the
+      // client to pass the PO it's receiving against; skipped when unknown.
+      const po = item.orderId ? poById.get(item.orderId) : null;
+
+      if (po && (currentRecord.quantityReceivedFromOrder ?? 0) === 0 && quantityReceivedFromOrder > 0) {
+        leadTimeSamples.push({
+          vendorKey: po.supplier ?? currentRecord.type ?? null,
+          purchaseOrderId: po.id,
+          orderNumber: po.orderNumber,
+          partNumber: currentRecord.partNumber,
+          partId: null,
+          orderKind: po.orderKind,
+          sentAt: po.sentAt,
+        });
+      }
 
       return prisma.job.update({
         where: {
@@ -319,6 +432,8 @@ export async function POST(request: NextRequest) {
 
     const results = await Promise.all(updatePromises);
     totalUpdated += results.length;
+
+    await flushLeadTimeSamples(leadTimeSamples);
 
     // Get unique job numbers for cache invalidation
     const uniqueJobNumbers = [...new Set(jobItems.map(i => i.jobNumber.trim()))];

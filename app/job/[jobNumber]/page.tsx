@@ -43,6 +43,7 @@ import type { DeliveryRecord } from "@/lib/deliveryTypes";
 import { formatVendorDisplay, normalizeVendorKey } from "@/lib/vendorUtils";
 import { JOB_UPDATED_NOTIFICATION_SOURCE_OVERVIEW_EDIT } from "@/lib/notifications";
 import { isJobPreorderEnabled } from "@/lib/featureFlags";
+import { softwareConfig } from '@/lib/softwareConfig';
 
 type JobDetailTab =
   | "puller"
@@ -94,12 +95,12 @@ function JobPageBootLoader({ message }: { message: string }) {
         <div className="absolute inset-0 bg-blue-500 rounded-full opacity-20 animate-ping" />
         <img
           src="/icon.png"
-          alt="Total Fire Protection"
+          alt={softwareConfig.name}
           className="relative z-10 mx-auto h-24 w-24 animate-float rounded-2xl shadow-lg"
         />
       </div>
       <p className="mt-8 text-2xl font-bold text-slate-900 dark:text-white">
-        Total Fire Protection
+        {softwareConfig.name}
       </p>
       <p className="mt-3 text-lg font-semibold text-slate-500 dark:text-slate-400">
         {message}

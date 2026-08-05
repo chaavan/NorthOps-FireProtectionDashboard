@@ -114,7 +114,16 @@ async function importParts() {
     console.log(`Import batch id: ${batchId}`);
     console.log(`Actor user id: ${actorUserId}\n`);
 
-    const csvPath = path.join(process.cwd(), 'oldfiles', 'parts.csv');
+    // The CSV is supplied per-run: `npx tsx scripts/import-parts.ts <path>` or
+    // PARTS_IMPORT_CSV. For a populated demo database use `npm run db:seed-parts-demo`
+    // instead, which generates synthetic parts with no external file.
+    const csvArg = process.argv[2]?.trim() || process.env.PARTS_IMPORT_CSV?.trim();
+    if (!csvArg) {
+      throw new Error(
+        'No CSV supplied. Pass a path (npx tsx scripts/import-parts.ts <path>) or set PARTS_IMPORT_CSV.',
+      );
+    }
+    const csvPath = path.isAbsolute(csvArg) ? csvArg : path.join(process.cwd(), csvArg);
     console.log(`Reading CSV from: ${csvPath}`);
 
     const rows = parseCSV(csvPath);

@@ -30,7 +30,7 @@ writeFileSync(
     deliveryDateDisplay: '3/15/2026, 12:00 AM CST',
     createdByDisplay: 'Jane Smith',
     createdAtDisplay: '3/10/2026, 2:30 PM CST',
-    dashboardUrl: 'https://tfp.tools/job/12345?list=1',
+    dashboardUrl: 'https://demo.example.com/job/12345?list=1',
     contractNumber: 'C-2026-001',
     area: 'North wing',
     locationShipTo: '123 Main St, Chicago IL',
@@ -56,7 +56,7 @@ writeFileSync(
     grantedBy: 'Jane Smith',
     grantedByRole: 'PROJECT_MANAGER',
     grantedAtDisplay: '3/10/2026, 2:35 PM CST',
-    dashboardUrl: 'https://tfp.tools/job/12345?list=1',
+    dashboardUrl: 'https://demo.example.com/job/12345?list=1',
   }),
 );
 
@@ -71,7 +71,7 @@ writeFileSync(
     createdAtDisplay: '3/11/2026, 9:00 AM CST',
     noteContent: 'Updated valve schedule attached. Please review before ordering.',
     isReply: false,
-    dashboardUrl: 'https://tfp.tools/job/12345?list=1&tab=notes&openNoteId=xyz',
+    dashboardUrl: 'https://demo.example.com/job/12345?list=1&tab=notes&openNoteId=xyz',
   }),
 );
 
@@ -91,7 +91,7 @@ writeFileSync(
         after: '3/20/2026',
       },
     ],
-    dashboardUrl: 'https://tfp.tools/job/12345?list=1',
+    dashboardUrl: 'https://demo.example.com/job/12345?list=1',
   }),
 );
 
@@ -112,7 +112,7 @@ writeFileSync(
       },
     ],
     dashboardUrl:
-      'https://tfp.tools/job/12345?list=1&tab=notes&openNoteId=xyz',
+      'https://demo.example.com/job/12345?list=1&tab=notes&openNoteId=xyz',
     ctaLabel: 'View note in dashboard',
     changeNote: {
       content: 'Customer requested a one-week push due to site access delays.',

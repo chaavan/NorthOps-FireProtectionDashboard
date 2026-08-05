@@ -150,6 +150,7 @@ export async function POST(request: NextRequest) {
                     altPN: altPN || null,
                     vendorPartID: vendorPartID || null,
                     dateUpdated: formatDateInAppTimeZone(new Date()),
+                    priceUpdatedAt: new Date(),
                 },
             });
 

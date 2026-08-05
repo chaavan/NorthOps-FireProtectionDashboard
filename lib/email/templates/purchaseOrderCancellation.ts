@@ -8,6 +8,7 @@ import {
   renderHero,
   renderKeyValueGrid,
   renderKeyValueList,
+  EMAIL_BRAND,
 } from '@/lib/email/layout';
 
 export type PurchaseOrderCancellationLineItem = {
@@ -126,7 +127,7 @@ export function buildPurchaseOrderCancellationTextEmail(
   } = props;
 
   return [
-    'TOTAL FIRE PROTECTION — ORDER CANCELLATION',
+    `${EMAIL_BRAND.toUpperCase()} — ORDER CANCELLATION`,
     '',
     `Job info: ${vendorPoLabel}`,
     `Reference: ${orderNumber}`,

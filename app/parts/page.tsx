@@ -36,15 +36,31 @@ interface Part {
   quantity: number;
   reorderPoint: number | null;
   orderMinimum: number | null;
+  doNotStock?: boolean;
   units: string;
   vendor: string | null;
   altPN?: string | null;
   vendorPartID?: string | null;
   cost: number;
-  updatedAt: string;
+  priceUpdatedAt: string | null;
+  /** Units already on an open inventory PO (ordered but not yet received). */
+  onOrderQty?: number;
+  /** Set when the part was dismissed ("snoozed") from the To Order tab. */
+  reorderSnoozedAt?: string | null;
+}
+
+/** A part is "on order" when it has outstanding qty on an open inventory PO. */
+function isPartOnOrder(part: Part): boolean {
+  return Number(part.onOrderQty ?? 0) > 0;
+}
+
+/** A part is "snoozed" when it was dismissed from To Order and stays hidden there. */
+function isPartSnoozed(part: Part): boolean {
+  return part.reorderSnoozedAt != null;
 }
 
 function isPartLowStock(part: Part): boolean {
+  if (part.doNotStock) return false;
   const minOnHand = Number(part.reorderPoint ?? 0);
   const orderMin = Number(part.orderMinimum ?? 0);
   if (minOnHand <= 0 || orderMin <= 0) return false;
@@ -470,6 +486,37 @@ export default function PartsPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
 
+  // Column sorting (server-side, so it sorts the whole list, not just the page)
+  const [sortBy, setSortBy] = useState('pn');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const handleSort = (column: string) => {
+    if (column === sortBy) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(column);
+      setSortDir('asc');
+    }
+    setPartsPage(1);
+  };
+  const renderSortHeader = (label: string, column: string, align: 'left' | 'right' = 'left') => {
+    const active = sortBy === column;
+    return (
+      <th className={`${align === 'right' ? 'text-right' : 'text-left'} py-3 px-4 font-bold text-slate-600 dark:text-slate-300 text-sm uppercase tracking-wider`}>
+        <button
+          type="button"
+          onClick={() => handleSort(column)}
+          className={`group inline-flex items-center gap-1 uppercase tracking-wider transition-colors hover:text-slate-900 dark:hover:text-white ${align === 'right' ? 'flex-row-reverse' : ''}`}
+          title={`Sort by ${label}`}
+        >
+          <span>{label}</span>
+          <span className={`text-[10px] ${active ? 'text-blue-500' : 'text-slate-400 opacity-40 group-hover:opacity-100'}`}>
+            {active ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+          </span>
+        </button>
+      </th>
+    );
+  };
+
   // Pagination
   const [partsPage, setPartsPage] = useState(1);
   const [movementsPage, setMovementsPage] = useState(1);
@@ -516,6 +563,11 @@ export default function PartsPage() {
   const canViewInventoryLogs = permissionsLoading ? loadingFallback : hasPermission('inventory.logs.view');
   const canViewCostHistory = permissionsLoading ? loadingFallback : hasPermission('inventory.cost_history.view');
   const canViewVendorPriceImports = permissionsLoading ? loadingFallback : hasPermission('inventory.vendor_prices.import');
+  // Un-snoozing returns a part to the To Order tab, so it's gated by the same
+  // permission as removing an item there.
+  const canUnsnooze = permissionsLoading
+    ? loadingFallback
+    : hasPermission('orders.to_order.edit') || hasPermission('orders.cancel');
   const isAccessDenied = status === 'authenticated' && !permissionsLoading && !canViewInventory;
   const loadParts = useCallback(async () => {
     if (!canViewInventory) {
@@ -533,6 +585,8 @@ export default function PartsPage() {
       const params = new URLSearchParams({
         page: partsPage.toString(),
         limit: limit.toString(),
+        sortBy,
+        sortDir,
       });
       if (debouncedSearchTerm) params.append('search', debouncedSearchTerm);
       if (showLowStockOnly) params.append('lowStock', '1');
@@ -558,7 +612,7 @@ export default function PartsPage() {
       setIsPartsLoading(false);
       setIsLoading(false);
     }
-  }, [canViewInventory, partsPage, limit, debouncedSearchTerm, showLowStockOnly]);
+  }, [canViewInventory, partsPage, limit, debouncedSearchTerm, showLowStockOnly, sortBy, sortDir]);
 
   /** Global quantity adjustment list (never filtered by selected part — avoids stale subset in the modal bug). */
   const loadMovements = useCallback(async () => {
@@ -762,6 +816,40 @@ export default function PartsPage() {
     setPartInfoChangesPage(1);
     setSelectedPart(part);
     setShowPartDetails(true);
+  };
+
+  const [unsnoozingPartId, setUnsnoozingPartId] = useState<string | null>(null);
+
+  // Clear a part's reorder snooze so it returns to the To Order tab. Optimistically
+  // drops the "Snoozed" badge (the part reverts to plain Low Stock), reverting on error.
+  const handleUnsnooze = async (part: Part) => {
+    if (unsnoozingPartId) return;
+    setUnsnoozingPartId(part.id);
+    setError(null);
+    const clearSnooze = (p: Part): Part =>
+      p.id === part.id ? { ...p, reorderSnoozedAt: null } : p;
+    setParts((prev) => prev.map(clearSnooze));
+    setSelectedPart((prev) => (prev && prev.id === part.id ? clearSnooze(prev) : prev));
+    try {
+      const response = await fetch('/api/admin/parts/unsnooze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ partNumber: part.pn }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to un-snooze part');
+      }
+    } catch (err) {
+      // Revert the optimistic change and surface the error.
+      const restoreSnooze = (p: Part): Part =>
+        p.id === part.id ? { ...p, reorderSnoozedAt: part.reorderSnoozedAt } : p;
+      setParts((prev) => prev.map(restoreSnooze));
+      setSelectedPart((prev) => (prev && prev.id === part.id ? restoreSnooze(prev) : prev));
+      setError((err as Error).message);
+    } finally {
+      setUnsnoozingPartId(null);
+    }
   };
 
   const handleDeletePart = async () => {
@@ -976,16 +1064,16 @@ export default function PartsPage() {
                   <table className="w-full">
                     <thead className="sticky top-0 z-10">
                       <tr className="border-b-2 border-slate-200 dark:border-slate-700/50 bg-white dark:bg-slate-800/95 backdrop-blur-sm">
-                        <th className="text-left py-3 px-4 font-bold text-slate-600 dark:text-slate-300 text-sm uppercase tracking-wider">Part Number</th>
-                        <th className="text-left py-3 px-4 font-bold text-slate-600 dark:text-slate-300 text-sm uppercase tracking-wider">Supplier Part #</th>
-                        <th className="text-left py-3 px-4 font-bold text-slate-600 dark:text-slate-300 text-sm uppercase tracking-wider">Description</th>
-                        <th className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-300 text-sm uppercase tracking-wider">On Hand</th>
-                        <th className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-300 text-sm uppercase tracking-wider">Min On Hand</th>
-                        <th className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-300 text-sm uppercase tracking-wider">Order Min</th>
+                        {renderSortHeader('Part Number', 'pn', 'left')}
+                        {renderSortHeader('Supplier Part #', 'vendorPartID', 'left')}
+                        {renderSortHeader('Description', 'nomenclature', 'left')}
+                        {renderSortHeader('On Hand', 'quantity', 'right')}
+                        {renderSortHeader('Min On Hand', 'reorderPoint', 'right')}
+                        {renderSortHeader('Order Min', 'orderMinimum', 'right')}
                         <th className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-300 text-sm uppercase tracking-wider">Suggested Qty</th>
-                        <th className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-300 text-sm uppercase tracking-wider">Current Price</th>
-                        <th className="text-left py-3 px-4 font-bold text-slate-600 dark:text-slate-300 text-sm uppercase tracking-wider">Vendor</th>
-                        <th className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-300 text-sm uppercase tracking-wider">Updated</th>
+                        {renderSortHeader('Current Price', 'cost', 'right')}
+                        {renderSortHeader('Vendor', 'vendor', 'left')}
+                        {renderSortHeader('Updated', 'updatedAt', 'right')}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200 dark:divide-slate-700/50">
@@ -1003,12 +1091,23 @@ export default function PartsPage() {
                           })
                           .map((part) => {
                             const lowStock = isPartLowStock(part);
+                            const onOrder = isPartOnOrder(part);
                             const suggestedQty = getSuggestedReorderQty(part);
+                            // "Don't stock" is an explicit flag — not merely a blank Min On
+                            // Hand. A blank Min On Hand just shows "—".
+                            const notStocked = part.doNotStock === true;
+                            // Snoozed low-stock parts are intentionally kept off To Order.
+                            // Show "Snoozed" in place of "Low Stock" so they're never
+                            // silently missing from To Order.
+                            const snoozed = lowStock && !onOrder && isPartSnoozed(part);
+                            // A low-stock part that's already on an open PO (On Order) or
+                            // snoozed no longer needs attention — drop the amber warning row.
+                            const needsAttention = lowStock && !onOrder && !snoozed;
                             return (
                             <tr
                               key={part.id}
                               className={`border-b border-slate-200 dark:border-slate-700/30 hover:bg-slate-100 dark:hover:bg-slate-700/30 transition-colors cursor-pointer ${
-                                lowStock ? 'bg-amber-50/80 dark:bg-yellow-900/20' : ''
+                                needsAttention ? 'bg-amber-50/80 dark:bg-yellow-900/20' : ''
                               }`}
                               onClick={() => handlePartClick(part)}
                             >
@@ -1018,17 +1117,59 @@ export default function PartsPage() {
                                 {part.nomenclature || '-'}
                               </td>
                               <td className="py-3 px-4 text-right">
-                                <span className={`font-semibold ${lowStock ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white'}`}>
-                                  {part.quantity.toLocaleString()}
-                                </span>
-                                {lowStock && (
-                                  <span className="ml-2 px-2 py-0.5 bg-red-600/80 text-white rounded text-xs font-medium">
-                                    Low Stock
+                                <div className="inline-flex flex-col items-end gap-1">
+                                  <span className={`font-semibold ${needsAttention ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white'}`}>
+                                    {part.quantity.toLocaleString()}
                                   </span>
-                                )}
+                                  {onOrder ? (
+                                    <span
+                                      className="px-2 py-0.5 bg-emerald-600/80 text-white rounded text-xs font-medium whitespace-nowrap"
+                                      title={`${Number(part.onOrderQty ?? 0).toLocaleString()} on an open purchase order`}
+                                    >
+                                      On Order
+                                    </span>
+                                  ) : snoozed ? (
+                                    canUnsnooze ? (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleUnsnooze(part);
+                                        }}
+                                        disabled={unsnoozingPartId === part.id}
+                                        title="Snoozed — dismissed from To Order. Click to un-snooze and put it back on the To Order tab."
+                                        className="px-2 py-0.5 bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 rounded text-xs font-medium whitespace-nowrap hover:bg-amber-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                      >
+                                        {unsnoozingPartId === part.id ? 'Un-snoozing…' : 'Snoozed'}
+                                      </button>
+                                    ) : (
+                                      <span
+                                        title="Snoozed — dismissed from the To Order tab. It won't be suggested for reorder until stock recovers above its minimum."
+                                        className="px-2 py-0.5 bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 rounded text-xs font-medium whitespace-nowrap"
+                                      >
+                                        Snoozed
+                                      </span>
+                                    )
+                                  ) : lowStock ? (
+                                    <span className="px-2 py-0.5 bg-red-600/80 text-white rounded text-xs font-medium whitespace-nowrap">
+                                      Low Stock
+                                    </span>
+                                  ) : null}
+                                </div>
                               </td>
                               <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-300 tabular-nums">
-                                {part.reorderPoint != null ? part.reorderPoint.toLocaleString() : '—'}
+                                {notStocked ? (
+                                  <span
+                                    className="inline-flex items-center px-2 py-0.5 bg-slate-200 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 rounded text-xs font-medium"
+                                    title="Flagged as Don't Stock — never suggested for reorder. Edit the part to change this."
+                                  >
+                                    Don&apos;t stock
+                                  </span>
+                                ) : part.reorderPoint != null ? (
+                                  part.reorderPoint.toLocaleString()
+                                ) : (
+                                  '—'
+                                )}
                               </td>
                               <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-300 tabular-nums">
                                 {part.orderMinimum != null ? part.orderMinimum.toLocaleString() : '—'}
@@ -1041,7 +1182,7 @@ export default function PartsPage() {
                               </td>
                               <td className="py-3 px-4 text-slate-600 dark:text-slate-300">{part.vendor || '-'}</td>
                               <td className="py-3 px-4 text-right text-sm text-slate-500 dark:text-slate-500">
-                                {formatDateInAppTimeZone(part.updatedAt)}
+                                {part.priceUpdatedAt ? formatDateInAppTimeZone(part.priceUpdatedAt) : '—'}
                               </td>
                             </tr>
                           );
@@ -1601,14 +1742,48 @@ export default function PartsPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <label className="text-sm font-semibold text-slate-500 dark:text-slate-400">Quantity On Hand</label>
-                      <p className={`text-2xl font-bold ${isPartLowStock(selectedPart) ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white'}`}>
-                        {selectedPart.quantity.toLocaleString()}
-                        {isPartLowStock(selectedPart) && (
-                          <span className="ml-2 align-middle px-2 py-0.5 bg-red-600/80 text-white rounded text-xs font-medium">
-                            Low Stock
-                          </span>
-                        )}
-                      </p>
+                      {(() => {
+                        const modalOnOrder = isPartOnOrder(selectedPart);
+                        const modalLow = isPartLowStock(selectedPart);
+                        const modalSnoozed = modalLow && !modalOnOrder && isPartSnoozed(selectedPart);
+                        const modalNeedsAttention = modalLow && !modalOnOrder && !modalSnoozed;
+                        return (
+                          <p className={`text-2xl font-bold ${modalNeedsAttention ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white'}`}>
+                            {selectedPart.quantity.toLocaleString()}
+                            {modalOnOrder ? (
+                              <span
+                                className="ml-2 align-middle px-2 py-0.5 bg-emerald-600/80 text-white rounded text-xs font-medium"
+                                title={`${Number(selectedPart.onOrderQty ?? 0).toLocaleString()} on an open purchase order`}
+                              >
+                                On Order
+                              </span>
+                            ) : modalSnoozed ? (
+                              canUnsnooze ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleUnsnooze(selectedPart)}
+                                  disabled={unsnoozingPartId === selectedPart.id}
+                                  title="Snoozed — dismissed from To Order. Click to un-snooze and put it back on the To Order tab."
+                                  className="ml-2 align-middle px-2 py-0.5 bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 rounded text-xs font-medium hover:bg-amber-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                >
+                                  {unsnoozingPartId === selectedPart.id ? 'Un-snoozing…' : 'Snoozed'}
+                                </button>
+                              ) : (
+                                <span
+                                  title="Snoozed — dismissed from the To Order tab. It won't be suggested for reorder until stock recovers above its minimum."
+                                  className="ml-2 align-middle px-2 py-0.5 bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 rounded text-xs font-medium"
+                                >
+                                  Snoozed
+                                </span>
+                              )
+                            ) : modalLow ? (
+                              <span className="ml-2 align-middle px-2 py-0.5 bg-red-600/80 text-white rounded text-xs font-medium">
+                                Low Stock
+                              </span>
+                            ) : null}
+                          </p>
+                        );
+                      })()}
                     </div>
                     <div>
                       <label className="text-sm font-semibold text-slate-500 dark:text-slate-400">Cost ($)</label>
@@ -1847,7 +2022,7 @@ export default function PartsPage() {
             refreshAdminAuditFeeds();
             setSelectedPart((prev) =>
               prev && prev.id === updated.id
-                ? { ...prev, quantity: updated.quantity, updatedAt: updated.updatedAt ?? prev.updatedAt }
+                ? { ...prev, quantity: updated.quantity }
                 : prev,
             );
             void loadPartDetailUnified(updated.id);

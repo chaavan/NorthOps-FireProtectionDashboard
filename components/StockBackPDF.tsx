@@ -4,6 +4,7 @@ import React from 'react';
 import { Document, Page, Text, View, Image, StyleSheet } from '@react-pdf/renderer';
 import { formatDateInAppTimeZone } from '@/lib/timezone';
 import type { StockBackPdfDocument } from '@/lib/stockBackPdfShared';
+import { softwareConfig } from '@/lib/softwareConfig';
 
 interface StockBackPDFProps {
   document: StockBackPdfDocument;
@@ -323,7 +324,7 @@ const StockBackPDF: React.FC<StockBackPDFProps> = ({ document }) => {
             <View style={styles.logoContainer}>
               <Image src={logoUrl} style={styles.logo} cache={false} />
               <View style={styles.companyInfo}>
-                <Text style={styles.companyName}>Total Fire Protection</Text>
+                <Text style={styles.companyName}>{softwareConfig.name}</Text>
                 <Text style={styles.companySubtitle}>
                   Fire-Protection Materials Shop
                 </Text>
@@ -342,7 +343,7 @@ const StockBackPDF: React.FC<StockBackPDFProps> = ({ document }) => {
         <View style={styles.infoSection}>
           <View style={styles.infoBox}>
             <Text style={styles.infoTitle}>Return To:</Text>
-            <Text style={styles.infoText}>Total Fire Protection</Text>
+            <Text style={styles.infoText}>{softwareConfig.name}</Text>
             <Text style={styles.infoText}>Fire-Protection Materials Shop</Text>
             <Text style={styles.infoText}>Inventory / Stock In</Text>
           </View>

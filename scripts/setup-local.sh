@@ -8,10 +8,7 @@ echo "==> NorthOps Fire Protection Dashboard — local setup"
 echo
 
 if [[ ! -f .env.local ]]; then
-  if [[ -f ../totalfireprotection/.env ]]; then
-    cp ../totalfireprotection/.env .env.local
-    echo "Copied env from ../totalfireprotection/.env"
-  elif [[ -f ENV_EXAMPLE.txt ]]; then
+  if [[ -f ENV_EXAMPLE.txt ]]; then
     cp ENV_EXAMPLE.txt .env.local
     echo "Created .env.local from ENV_EXAMPLE.txt — fill in required values."
   else
@@ -39,7 +36,7 @@ echo "==> Seeding role permissions"
 npm run db:seed-permissions
 
 echo "==> Ensuring admin user exists"
-npx tsx scripts/create-chaavan-admin.ts || true
+npx tsx scripts/create-demo-users.ts || true
 
 echo
 echo "Setup complete. Start the app with: npm run dev"

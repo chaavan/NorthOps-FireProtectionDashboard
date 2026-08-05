@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { cache, cacheKeys } from '@/lib/cache';
 import { requirePermission, hasPermission } from '@/lib/permissions';
+import { isInventoryReplenishmentJobNumber } from '@/lib/inventoryReorder';
 
 export const dynamic = 'force-dynamic';
 
@@ -127,6 +128,35 @@ export async function POST(request: NextRequest) {
     const affectedJobNumbers = new Set<string>();
 
     for (const item of dedupedItems) {
+      // Inventory replenishment suggestions are virtual (no Job row). "Cancelling" one
+      // snoozes the underlying Part so it stops being suggested until stock recovers
+      // above its reorder point (see loadSnoozedReorderPartIds in lib/inventoryReorder).
+      if (isInventoryReplenishmentJobNumber(item.jobNumber)) {
+        try {
+          const snoozed = await prisma.part.updateMany({
+            where: { pn: item.partNumber },
+            data: { reorderSnoozedAt: new Date() },
+          });
+          results.push({
+            jobNumber: item.jobNumber,
+            listNumber: item.listNumber,
+            partNumber: item.partNumber,
+            status: snoozed.count > 0 ? 'CANCELLED' : 'NOT_FOUND',
+            reason: snoozed.count > 0 ? undefined : 'Part not found for inventory reorder',
+          });
+        } catch {
+          // reorder_snoozed_at column not present yet (migration pending).
+          results.push({
+            jobNumber: item.jobNumber,
+            listNumber: item.listNumber,
+            partNumber: item.partNumber,
+            status: 'NOT_FOUND',
+            reason: 'Inventory cancel is unavailable until the reorder-snooze update is applied',
+          });
+        }
+        continue;
+      }
+
       const compositeKey = makeCompositeKey(item.jobNumber, item.listNumber, item.partNumber);
       const legacyKey = makeLegacyKey(item.jobNumber, item.partNumber);
       const hasExactLock = exactPoKeys.has(compositeKey);

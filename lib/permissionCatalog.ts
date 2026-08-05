@@ -1,4 +1,5 @@
 import type { RoleKey } from "@/lib/roleTypes";
+import { isCrmEnabled } from "@/lib/featureFlags";
 
 export const PERMISSION_GROUPS = [
   {
@@ -127,6 +128,15 @@ export const PERMISSION_GROUPS = [
       ["estimates.change_status", "Change status"],
       ["estimates.pdf.generate", "Generate PDFs"],
       ["estimates.variants.manage", "Manage variants"],
+    ],
+  },
+  {
+    id: "crm",
+    label: "CRM",
+    permissions: [
+      ["crm.view", "View CRM"],
+      ["crm.edit", "Edit CRM records"],
+      ["crm.link_estimates", "Link deficiencies to estimates"],
     ],
   },
   {
@@ -669,6 +679,27 @@ export const PERMISSION_HIERARCHY = [
     ],
   },
   {
+    id: "crm",
+    label: "CRM",
+    help: "Service-sales CRM, deficiency pipeline, renewals, and estimate linking.",
+    nodes: [
+      {
+        key: "crm.view",
+        label: "CRM Access",
+        help: "View CRM dashboards, accounts, pipeline, and renewals.",
+        children: [
+          { key: "crm.edit", label: "Edit CRM Records", help: "Create and update accounts, inspections, deficiencies, opportunities, and renewals." },
+          {
+            key: "crm.link_estimates",
+            label: "Link Estimates",
+            help: "Connect deficiencies to standalone estimates and sync pipeline stages.",
+            requires: ["crm.edit"],
+          },
+        ],
+      },
+    ],
+  },
+  {
     id: "users",
     label: "Manage Users",
     help: "User accounts, roles, permission editing, and audits.",
@@ -891,6 +922,10 @@ const ESTIMATE_KEYS = new Set<PermissionKey>(
   ALL_PERMISSION_KEYS.filter((key) => key.startsWith("estimates.")),
 );
 
+const CRM_KEYS = new Set<PermissionKey>(
+  ALL_PERMISSION_KEYS.filter((key) => key.startsWith("crm.")),
+);
+
 const EVERYONE_VIEW_KEYS = new Set<PermissionKey>([
   "calendar.view",
   "jobs.view",
@@ -960,6 +995,7 @@ export function defaultRoleAllows(role?: RoleKey | null): Set<PermissionKey> {
 
   if (role === "ADMIN" || role === "SALES") {
     for (const key of ESTIMATE_KEYS) allowed.add(key);
+    for (const key of CRM_KEYS) allowed.add(key);
   }
 
   if (role === "ADMIN") {
@@ -1002,6 +1038,9 @@ export const ROLE_LOCKED_ALLOW_KEYS = new Set<PermissionKey>([
 export const ROLE_PERMISSION_HIDDEN_GROUP_IDS = new Set<string>(["calendar", "dev"]);
 
 export function isRolePermissionGroupHidden(groupId: string): boolean {
+  // Drop the CRM group from the role editors entirely when the module is off,
+  // rather than offering toggles that grant nothing.
+  if (groupId === "crm" && !isCrmEnabled()) return true;
   return ROLE_PERMISSION_HIDDEN_GROUP_IDS.has(groupId);
 }
 

@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { requirePermission } from '@/lib/permissions';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
+import { loadInventoryPoOutstandingQty, inventoryPoLineKey } from '@/lib/inventoryReorder';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,11 +34,32 @@ export async function GET(request: NextRequest) {
     const lowStock = searchParams.get('lowStock') === '1';
     const skip = (page - 1) * limit;
 
+    // Whitelisted sort columns (prisma field + raw SQL identifier). Anything else
+    // falls back to part number, so untrusted input can't reach the ORDER BY clause.
+    const SORT_COLUMNS: Record<string, { prisma: string; sql: string }> = {
+      pn: { prisma: 'pn', sql: '"pn"' },
+      vendorPartID: { prisma: 'vendorPartID', sql: '"vendor_part_id"' },
+      nomenclature: { prisma: 'nomenclature', sql: '"nomenclature"' },
+      quantity: { prisma: 'quantity', sql: '"quantity"' },
+      reorderPoint: { prisma: 'reorderPoint', sql: '"reorder_point"' },
+      orderMinimum: { prisma: 'orderMinimum', sql: '"order_minimum"' },
+      cost: { prisma: 'cost', sql: '"cost"' },
+      vendor: { prisma: 'vendor', sql: '"vendor"' },
+      updatedAt: { prisma: 'priceUpdatedAt', sql: '"price_updated_at"' },
+    };
+    const sortCol = SORT_COLUMNS[searchParams.get('sortBy') || 'pn'] ?? SORT_COLUMNS.pn;
+    const sortDir: 'asc' | 'desc' =
+      searchParams.get('sortDir') === 'desc' ? 'desc' : 'asc';
+
     const totalValueResult = await prisma.$queryRaw<Array<{ total: string | null }>>`
       SELECT COALESCE(SUM("cost" * COALESCE("quantity", 0)), 0) AS total
       FROM "parts"
     `;
     const totalInventoryValue = Number(totalValueResult[0]?.total ?? 0);
+
+    // Outstanding (ordered-but-not-yet-received) qty per part on open INVENTORY POs.
+    // Keyed by inventoryPoLineKey(pn) so we can flag parts that are already on order.
+    const openPoByPart = await loadInventoryPoOutstandingQty(prisma);
 
     if (lowStock) {
       const searchFilter = search
@@ -69,19 +91,23 @@ export async function GET(request: NextRequest) {
         units: string;
         vendor: string | null;
         cost: Prisma.Decimal;
-        updatedAt: Date;
+        price_updated_at: Date | null;
         altPN: string | null;
         vendor_part_id: string | null;
+        reorder_snoozed_at: Date | null;
       }>>`
         SELECT
           "id", "pn", "nomenclature", "quantity", "reorder_point", "order_minimum",
-          "units", "vendor", "cost", "updatedAt", "altPN", "vendor_part_id"
+          "units", "vendor", "cost", "price_updated_at", "altPN", "vendor_part_id",
+          "reorder_snoozed_at"
         FROM "parts"
         WHERE "reorder_point" > 0
           AND "order_minimum" > 0
           AND COALESCE("quantity", 0) <= "reorder_point"
           ${searchFilter}
-        ORDER BY "pn" ASC
+        ORDER BY ${Prisma.raw(sortCol.sql)} ${Prisma.raw(sortDir.toUpperCase())}${
+          sortCol.prisma === 'pn' ? Prisma.empty : Prisma.raw(', "pn" ASC')
+        }
         LIMIT ${limit}
         OFFSET ${skip}
       `;
@@ -97,9 +123,11 @@ export async function GET(request: NextRequest) {
           units: p.units,
           vendor: p.vendor,
           cost: Number(p.cost),
-          updatedAt: p.updatedAt,
+          priceUpdatedAt: p.price_updated_at,
           altPN: p.altPN,
           vendorPartID: p.vendor_part_id,
+          reorderSnoozedAt: p.reorder_snoozed_at,
+          onOrderQty: openPoByPart.get(inventoryPoLineKey(p.pn)) ?? 0,
         })),
         totalInventoryValue,
         pagination: {
@@ -130,9 +158,10 @@ export async function GET(request: NextRequest) {
       where,
       skip,
       take: limit,
-      orderBy: [
-        { pn: 'asc' },
-      ],
+      orderBy:
+        sortCol.prisma === 'pn'
+          ? [{ pn: sortDir }]
+          : [{ [sortCol.prisma]: sortDir }, { pn: 'asc' }],
       select: {
         id: true,
         pn: true,
@@ -140,12 +169,14 @@ export async function GET(request: NextRequest) {
         quantity: true,
         reorderPoint: true,
         orderMinimum: true,
+        doNotStock: true,
         units: true,
         vendor: true,
         cost: true,
-        updatedAt: true,
+        priceUpdatedAt: true,
         altPN: true,
         vendorPartID: true,
+        reorderSnoozedAt: true,
       },
     });
 
@@ -154,6 +185,7 @@ export async function GET(request: NextRequest) {
         ...p,
         quantity: p.quantity ? Number(p.quantity) : 0,
         cost: Number(p.cost),
+        onOrderQty: openPoByPart.get(inventoryPoLineKey(p.pn)) ?? 0,
       })),
       totalInventoryValue,
       pagination: {

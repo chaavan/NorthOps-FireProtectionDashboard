@@ -20,7 +20,7 @@ const htmlBody = buildJobCreatedEmailHtml({
   deliveryDateDisplay: '5/26/2026',
   createdByDisplay: 'Test User',
   createdAtDisplay: '5/26/2026, 8:49 PM',
-  dashboardUrl: 'https://tfp.tools/job/TEST-WEBHOOK?list=1',
+  dashboardUrl: 'https://demo.example.com/job/TEST-WEBHOOK?list=1',
   lineItems: [{ partNumber: 'P-001', description: 'Test part', quantityNeeded: 1, uom: 'EA' }],
   initialNote: {
     content: 'Test initial note body',
@@ -43,7 +43,7 @@ const payload = {
   createdAt: new Date().toISOString(),
   lineItemCount: 1,
   lineItems: [{ partNumber: 'P-001', description: 'Test part', quantityNeeded: 1, uom: 'EA' }],
-  dashboardUrl: 'https://tfp.tools/job/TEST-WEBHOOK?list=1',
+  dashboardUrl: 'https://demo.example.com/job/TEST-WEBHOOK?list=1',
   initialNote: {
     noteContent: 'Test initial note body',
     createdBy: 'Test User',

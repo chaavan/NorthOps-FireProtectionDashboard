@@ -78,8 +78,8 @@ foreach ($key in $recommended) {
 }
 
 Write-Host ""
-Write-Host "Tip: Copy production values from Vercel > Project > Settings > Environment Variables"
-Write-Host "     https://vercel.com  (projects: totalfireprotection, totalfireprotection-xrjt)"
+Write-Host "Tip: Copy deployment values from Vercel > Project > Settings > Environment Variables"
+Write-Host "     https://vercel.com"
 Write-Host ""
 
 if ($missingRequired -gt 0) { exit 1 }

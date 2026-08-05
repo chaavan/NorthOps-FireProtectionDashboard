@@ -136,7 +136,7 @@ export async function POST(
       );
     }
 
-    // Verify target user exists (case-insensitive email lookup so e.g. Lwitt@totalfire.biz matches)
+    // Verify target user exists (case-insensitive email lookup so e.g. JDoe@example.com matches)
     const normalizedInput = targetUserEmail.trim();
     const targetUser = await prisma.user.findFirst({
       where: {

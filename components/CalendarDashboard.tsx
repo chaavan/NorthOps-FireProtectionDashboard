@@ -8,6 +8,7 @@ import { ChevronRight, Printer } from "lucide-react";
 import { canAccessJobDirectory } from "@/lib/permissionCatalog";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import { formatDateInAppTimeZone } from "@/lib/timezone";
+import { softwareConfig } from "@/lib/softwareConfig";
 import {
   getDefaultCalendarUiState,
   loadCalendarUiSnapshot,
@@ -1548,8 +1549,8 @@ export default function CalendarDashboard() {
     <div className="calendar-print-only">
       <div className="calendar-print-header">
         <div className="calendar-print-header-top">
-          <img src="/icon.png" alt="Total Fire Protection" className="calendar-print-logo" />
-          <h1>Total Fire Protection Calendar Printout</h1>
+          <img src="/icon.png" alt={softwareConfig.name} className="calendar-print-logo" />
+          <h1>{softwareConfig.name} Calendar Printout</h1>
         </div>
         <div className="calendar-print-meta">
           <span><strong>View:</strong> {printViewLabel}</span>

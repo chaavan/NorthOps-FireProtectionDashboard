@@ -17,8 +17,9 @@ import { displaySupplierName, normalizeSupplierKey } from '@/lib/suppliers';
 import type { UnifiedVendor } from '@/lib/vendorService';
 import { formatDateInAppTimeZone } from '@/lib/timezone';
 import { getRemainingQty } from '@/lib/quantityMath';
-import { INVENTORY_REORDER_LIST_NUMBER } from '@/lib/inventoryReorder';
+import { INVENTORY_REORDER_LIST_NUMBER, isInventoryReplenishmentJobNumber } from '@/lib/inventoryReorder';
 import { formatVendorDisplay, normalizeVendorKey } from '@/lib/vendorUtils';
+import { softwareConfig } from '@/lib/softwareConfig';
 
 interface OrderItem {
   jobNumber: string;
@@ -2236,8 +2237,13 @@ export default function AdminOrdersPage() {
         supplierKey,
         supplierName: displaySupplierName(supplierKey),
         items,
-        toEmails: fallbackToPurchasing ? ['purchasing@totalfire.biz'] : toEmails,
-        ccEmails: Array.from(new Set([...(ccEmails || []), 'purchasing@totalfire.biz'])),
+        toEmails:
+          fallbackToPurchasing && softwareConfig.purchasingFallbackEmail
+            ? [softwareConfig.purchasingFallbackEmail]
+            : toEmails,
+        ccEmails: Array.from(
+          new Set([...(ccEmails || []), softwareConfig.purchasingFallbackEmail]),
+        ).filter(Boolean),
         fallbackToPurchasing,
         needsSetup: fallbackToPurchasing,
       };
@@ -2911,9 +2917,7 @@ export default function AdminOrdersPage() {
                                             )}
                                           </td>
                                           <td className="px-4 py-2 text-center">
-                                            {isInventoryLine ? (
-                                              <span className="text-xs text-slate-500 dark:text-slate-400">—</span>
-                                            ) : item.canCancel !== false && canEditToOrderRows ? (
+                                            {item.canCancel !== false && canEditToOrderRows ? (
                                               <button
                                                 type="button"
                                                 onClick={(e) => {
@@ -2921,10 +2925,17 @@ export default function AdminOrdersPage() {
                                                   openSingleCancelModal(job.jobNumber, item);
                                                 }}
                                                 disabled={isCancellingOrders || isSending}
-                                                className="px-3 py-1.5 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                                title={isInventoryLine ? 'Snooze this part — remove it from To Order until stock recovers above its minimum' : undefined}
+                                                className={`px-3 py-1.5 text-xs font-semibold text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed ${
+                                                  isInventoryLine
+                                                    ? 'bg-amber-600 hover:bg-amber-700'
+                                                    : 'bg-red-600 hover:bg-red-700'
+                                                }`}
                                               >
-                                                Cancel Order
+                                                {isInventoryLine ? 'Snooze' : 'Cancel Order'}
                                               </button>
+                                            ) : isInventoryLine ? (
+                                              <span className="text-xs text-slate-500 dark:text-slate-400">—</span>
                                             ) : (
                                               <span
                                                 title={item.cancelBlockReason || 'Already sent in Purchase Order'}
@@ -3744,7 +3755,12 @@ export default function AdminOrdersPage() {
         </div>
       )}
 
-      {showCancelOrderModal && (
+      {showCancelOrderModal && (() => {
+        // Inventory replenishment lines snooze rather than cancel — adapt the wording.
+        const isInventorySnoozeModal =
+          cancelOrderTargets.length > 0 &&
+          cancelOrderTargets.every((t) => isInventoryReplenishmentJobNumber(t.jobNumber));
+        return (
         <div
           className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
           style={{ zIndex: 9999 }}
@@ -3759,16 +3775,20 @@ export default function AdminOrdersPage() {
             style={{ zIndex: 10000 }}
           >
             <div className="px-6 py-4 border-b border-gray-200 dark:border-slate-700/50">
-              <h3 className="text-xl font-bold text-slate-900 dark:text-white">Cancel Order</h3>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                {isInventorySnoozeModal ? 'Snooze Item' : 'Cancel Order'}
+              </h3>
             </div>
             <div className="p-6 space-y-4">
               <p className="text-slate-700 dark:text-slate-300">
-                Are you sure you want to cancel this order? The part will return to un-ordered status.
+                {isInventorySnoozeModal
+                  ? 'Snooze this item? It will be removed from To Order and shown as "Snoozed" in inventory until stock recovers above its minimum (or you un-snooze it).'
+                  : 'Are you sure you want to cancel this order? The part will return to un-ordered status.'}
               </p>
               {cancelOrderMode === 'bulk' && (
                 <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-600/50 rounded-xl p-4 space-y-1">
                   <p className="text-sm text-slate-700 dark:text-slate-300">
-                    {cancelOrderTargets.length} selected item(s) will be canceled.
+                    {cancelOrderTargets.length} selected item(s) will be {isInventorySnoozeModal ? 'snoozed' : 'canceled'}.
                   </p>
                   {cancelOrderBlockedCount > 0 && (
                     <p className="text-sm text-yellow-700 dark:text-yellow-400">
@@ -3796,21 +3816,24 @@ export default function AdminOrdersPage() {
               <button
                 onClick={handleConfirmCancelOrders}
                 disabled={isCancellingOrders || cancelOrderTargets.length === 0}
-                className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className={`flex-1 px-4 py-2.5 text-white rounded-xl font-semibold transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${
+                  isInventorySnoozeModal ? 'bg-amber-600 hover:bg-amber-700' : 'bg-red-600 hover:bg-red-700'
+                }`}
               >
                 {isCancellingOrders ? (
                   <>
                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Canceling...
+                    {isInventorySnoozeModal ? 'Snoozing...' : 'Canceling...'}
                   </>
                 ) : (
-                  'Yes, Cancel Order'
+                  isInventorySnoozeModal ? 'Yes, Snooze' : 'Yes, Cancel Order'
                 )}
               </button>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       <VendorsHubModal
         isOpen={showVendorsHubModal}
