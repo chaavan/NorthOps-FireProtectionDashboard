@@ -6,12 +6,12 @@ import { prisma } from "@/lib/prisma";
 type DbClient = PrismaClient | Prisma.TransactionClient;
 
 /**
- * When this dashboard's inventory data became real.
+ * When this deployment's inventory data became trustworthy.
  *
- * The ledger starts 2026-01-18, but the early rows are setup/test: the first two weeks
- * of job activity cover 1 and 3 jobs respectively, then the week of 2026-02-23 jumps to
- * 27 jobs / 145 parts / 340 movements and never drops below ~30 jobs a week again.
- * Everything before this date would drag the averages down with test noise.
+ * A ledger typically opens with a stretch of setup and test rows — a handful of jobs a
+ * week — before real production volume starts. Averaging across that early noise drags
+ * every estimate down, so demand is only counted from this date forward. Move it to the
+ * week your own job volume stabilised.
  *
  * We deliberately use EVERY day from here to now rather than a rolling window, so the
  * estimates keep improving as more history accumulates.

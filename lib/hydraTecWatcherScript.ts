@@ -64,7 +64,7 @@ export function buildWatcherScriptFileName(watcherName: string): string {
 /**
  * Escapes a value for safe interpolation inside a PowerShell *single-quoted*
  * string literal. In PowerShell, a single quote is escaped by doubling it
- * (`''`) — without this, a watcher name like "Chaavan's Test PC" closes the
+ * (`''`) — without this, a watcher name like "Ana's Test PC" closes the
  * string early and breaks the script with a parse error before anything in
  * it ever runs.
  */

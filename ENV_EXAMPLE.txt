@@ -70,10 +70,22 @@ NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=pk.your-mapbox-public-token
 # Password required to unlock Material Catalog editing.
 MATERIAL_CATALOG_EDIT_PASSWORD=change-this-catalog-password
 
+# ===== DEMO SEEDS =====
+# Each seed refuses to run unless its confirm variable is set, because they write
+# to whatever database DATABASE_URL points at and clean their own prior rows first.
+# All seeded data is synthetic; see the header of each script.
+#   CRM_DEMO_SEED_CONFIRM=I_UNDERSTAND      npm run db:seed-crm-demo
+#   PARTS_DEMO_SEED_CONFIRM=I_UNDERSTAND    npm run db:seed-parts-demo
+#   MATERIAL_CATALOG_DEMO_PRICES_CONFIRM=I_UNDERSTAND npm run db:seed-material-catalog-demo-prices
+#   ESTIMATE_DEMO_PRICING_CONFIRM=I_UNDERSTAND        npm run db:seed-estimate-demo-pricing
+# Pass --clean to a seed to remove just its own rows.
+# Optional: override the actor stamped on seeded CRM rows (default demo-seed@northops.local).
+# CRM_DEMO_SEED_ACTOR=demo-seed@northops.local
+
 # ===== N8N WEBHOOKS (Deprecated - No longer needed) =====
 # Native backorder processing is now built-in. These are kept for backwards compatibility.
-# N8N_WEBHOOK_URL=https://curran.app.n8n.cloud/webhook-test/email-suppliers
-# N8N_BACKORDER_WEBHOOK_URL=https://curran.app.n8n.cloud/webhook-test/backorder-upload
+# N8N_WEBHOOK_URL=https://n8n.example.com/webhook-test/email-suppliers
+# N8N_BACKORDER_WEBHOOK_URL=https://n8n.example.com/webhook-test/backorder-upload
 
 # ===== PURCHASE ORDER EMAIL (Optional — Vendor Orders) =====
 # Leave unset for dashboard-only purchase orders (no supplier email, no n8n).

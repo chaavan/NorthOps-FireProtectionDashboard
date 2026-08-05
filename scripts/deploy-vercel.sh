@@ -10,7 +10,7 @@ if ! command -v vercel >/dev/null 2>&1; then
 fi
 
 echo "==> Vercel deploy for NorthOps-FireProtectionDashboard"
-echo "If prompted, log in and link to chaavan/NorthOps-FireProtectionDashboard"
+echo "If prompted, log in and link this directory to your Vercel project"
 echo
 
 vercel link --yes --project northops-fire-protection-dashboard 2>/dev/null || vercel link
